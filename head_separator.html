@@ -41,6 +41,21 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
 .info-row{display:flex;justify-content:space-between;gap:10px;margin-bottom:4px}
 .info-row .lbl{color:#667}
 .info-row .coords{color:#cc9;font-family:monospace;font-size:10.5px}
+#landmarkCard{background:#0f0f25;border-radius:8px;padding:11px;border-left:3px solid #a78bfa}
+#landmarkCard .lc-title{color:#a78bfa;font-size:12px;font-weight:600;margin-bottom:6px}
+#lmHint{font-size:10px;color:#667;margin-bottom:7px;line-height:1.4}
+#lmTooltip{position:absolute;background:rgba(10,10,30,.92);border:1px solid #a78bfa;border-radius:6px;padding:7px 11px;font-size:11px;color:#dde;pointer-events:none;display:none;backdrop-filter:blur(4px);white-space:nowrap;z-index:10}
+#lmTooltip .lm-tt-num{color:#a78bfa;font-weight:700;font-size:13px;margin-bottom:2px}
+#lmTooltip .lm-tt-name{color:#99a;font-size:10px;margin-bottom:5px}
+#lmTooltip .lm-tt-row{display:flex;justify-content:space-between;gap:10px;margin-bottom:2px}
+#lmTooltip .lm-tt-lbl{color:#667;font-size:10px}
+#lmTooltip .lm-tt-val{color:#cc9;font-family:monospace;font-size:10.5px}
+.lm-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:8px}
+.lm-btn{padding:3px 2px;background:#07071a;border:1px solid #334;border-radius:4px;color:#778;font-size:10px;cursor:pointer;text-align:center;line-height:1.3}
+.lm-btn:hover{border-color:#a78bfa;color:#a78bfa}
+.lm-btn.active{background:#a78bfa22;border-color:#a78bfa;color:#a78bfa;font-weight:700}
+.lm-btn.placed{color:#cc9;border-color:#556}
+.lm-btn.active.placed{background:#a78bfa33;color:#a78bfa}
 </style>
 </head>
 <body>
@@ -53,6 +68,12 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
     <div class="info-row"><span class="lbl">Eyes</span><span class="coords" id="ip-eyes">—</span></div>
     <div class="info-row"><span class="lbl">Nose</span><span class="coords" id="ip-nose">—</span></div>
     <div class="info-row"><span class="lbl">Mouth</span><span class="coords" id="ip-mouth">—</span></div>
+  </div>
+  <div id="lmTooltip">
+    <div class="lm-tt-num" id="lmtt-num"></div>
+    <div class="lm-tt-name" id="lmtt-name"></div>
+    <div class="lm-tt-row"><span class="lm-tt-lbl">Local</span><span class="lm-tt-val" id="lmtt-local"></span></div>
+    <div class="lm-tt-row"><span class="lm-tt-lbl">World</span><span class="lm-tt-val" id="lmtt-world"></span></div>
   </div>
   <div id="camControls">
     <button id="btnResetCam" onclick="resetCamera()">Reset Camera</button>
@@ -74,6 +95,13 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
   <div id="featureCards"></div>
 
   <button class="reset" onclick="resetAll()">Reset All Offsets</button>
+
+  <div id="landmarkCard">
+    <div class="lc-title">Landmarks</div>
+    <label class="row-check"><input type="checkbox" id="chkLandmarks" checked> Show landmarks</label>
+    <div id="lmHint" style="margin-top:4px">19 anatomical points auto-mapped to nearest mesh vertex.</div>
+  </div>
+
   <div id="status">Loading model…</div>
 </div>
 
@@ -95,13 +123,13 @@ vp.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x12121f);
 
-const perspCam = new THREE.PerspectiveCamera(40,1,.01,100);
-perspCam.position.set(0,.2,4.5);
+const perspCam = new THREE.PerspectiveCamera(40,1,0.1,50000);
+perspCam.position.set(0,100,1200);
 
 function makeOrtho(){
   const w=vp.clientWidth, h=vp.clientHeight;
-  const s=2.2;
-  return new THREE.OrthographicCamera(-s*(w/h),s*(w/h),s,-s,.01,100);
+  const s=400;
+  return new THREE.OrthographicCamera(-s*(w/h),s*(w/h),s,-s,0.1,50000);
 }
 let orthoCam = makeOrtho();
 orthoCam.position.copy(perspCam.position);
@@ -133,7 +161,7 @@ window.toggleProjection = function(){
     const w=vp.clientWidth, h=vp.clientHeight;
     const dist = camera.position.distanceTo(ctrl.target);
     const s = dist * Math.tan(THREE.MathUtils.degToRad(perspCam.fov/2));
-    orthoCam = new THREE.OrthographicCamera(-s*(w/h),s*(w/h),s,-s,.01,100);
+    orthoCam = new THREE.OrthographicCamera(-s*(w/h),s*(w/h),s,-s,0.1,50000);
     orthoCam.position.copy(camera.position);
     orthoCam.quaternion.copy(camera.quaternion);
     ctrl.object = orthoCam;
@@ -163,8 +191,10 @@ function resize(){
 window.addEventListener('resize',resize); resize();
 
 // ── Head group (wraps mesh + points so they move together) ───────────
+const MODEL_SCALE = 188.4;
+
 const headGroup = new THREE.Group();
-headGroup.position.set(0, 0.32, -1.10);
+headGroup.position.set(0, 0.32 * MODEL_SCALE, -1.10 * MODEL_SCALE);
 scene.add(headGroup);
 
 // ── Move-mode (double-click drag) ─────────────────────────────────────
@@ -181,17 +211,7 @@ function getMouseNDC(e){
   _mouse.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
 }
 
-renderer.domElement.addEventListener('dblclick', e=>{
-  if(!headMesh) return;
-  getMouseNDC(e);
-  raycaster.setFromCamera(_mouse, camera);
-  const hits = raycaster.intersectObject(headMesh);
-  if(hits.length > 0 || moveMode){
-    moveMode = !moveMode;
-    ctrl.enabled = !moveMode;
-    document.getElementById('moveHint').style.display = moveMode ? 'block' : 'none';
-  }
-});
+// Head move-by-double-click disabled.
 
 renderer.domElement.addEventListener('mousedown', e=>{
   if(!moveMode || !headMesh) return;
@@ -326,12 +346,11 @@ window.addEventListener('resize',()=>{
 // ── Feature definitions ───────────────────────────────────────────────
 // Centers in world space (after applyMatrix4). Tuned to this model's bbox:
 // X:[-0.957,0.957], Y:[-1.737,1.385], Z:[-0.932,1.297]
+const S = MODEL_SCALE;
 const FEATURES = [
-  // eyes: dual-center feature. center stores the RIGHT eye; left is mirrored at [-x,y,z].
-  // X slider = symmetric spread from midline.
-  {id:'eyes', label:'Eyes', color:'#ff9f6b', center:[0.30, 0.40, 0.93], radius:0.32, symmetric:true},
-  {id:'nose',  label:'Nose',  color:'#6bffaa', center:[0.00, 0.02, 1.08], radius:0.38, noX:true},
-  {id:'mouth', label:'Mouth', color:'#ffd56b', center:[0.00,-0.21, 1.05], radius:0.40, noX:true},
+  {id:'eyes', label:'Eyes', color:'#ff9f6b', center:[0.30*S, 0.40*S, 0.93*S], radius:0.32*S, symmetric:true},
+  {id:'nose',  label:'Nose',  color:'#6bffaa', center:[0.00,   0.02*S, 1.08*S], radius:0.38*S, noX:true},
+  {id:'mouth', label:'Mouth', color:'#ffd56b', center:[0.00,  -0.21*S, 1.05*S], radius:0.40*S, noX:true},
 ];
 
 const offsets = {};
@@ -363,7 +382,7 @@ FEATURES.forEach(feat=>{
     <div class="slider-group">
       ${activeAxes.map(ax=>`
         <label><span>${axLabels[ax]}</span>
-          <input type="range" id="${feat.id}_${ax}" min="-0.06" max="0.06" step="0.0004" value="0">
+          <input type="range" id="${feat.id}_${ax}" min="${(-0.06*S).toFixed(2)}" max="${(0.06*S).toFixed(2)}" step="${(0.0004*S).toFixed(4)}" value="0">
           <span class="val" id="${feat.id}_${ax}_v">0.00</span>
         </label>`).join('')}
     </div>
@@ -499,7 +518,8 @@ function updatePositions(){
 
 window.resetAll=function(){
   FEATURES.forEach(f=>{
-    ['x','y','z'].forEach(ax=>{
+    const axes = f.noX ? ['y','z'] : ['x','y','z'];
+    axes.forEach(ax=>{
       offsets[f.id][ax]=0;
       document.getElementById(`${f.id}_${ax}`).value=0;
       document.getElementById(`${f.id}_${ax}_v`).textContent='0.00';
@@ -507,6 +527,161 @@ window.resetAll=function(){
   });
   updatePositions();
 };
+
+// ── Landmark system — auto-placed at nearest vertex ───────────────────
+// Estimated positions in local mesh space (same coords as FEATURES).
+// X: +right(viewer)/anatomical-left, Y: +up, Z: +forward
+// Numbering matches the anthropometric chart (H1-H10, V1-V11).
+// est: [X, Y, Z] in headGroup local space. midline:true → search restricted to |X|<0.04
+// so midline points (9,10,11,12,15,16,17) always land on the face's X=0 axis.
+// Eye Z raised to eyelid surface (~0.92-0.96); mouth corner Z raised to lip surface (~1.06).
+const LANDMARKS = [
+  {label:'1',  name:'Left Med. Canthus',    est:[0,0,0]},
+  {label:'2',  name:'Right Med. Canthus',   est:[0,0,0]},
+  {label:'3',  name:'Left Lat. Canthus',    est:[0,0,0]},
+  {label:'4',  name:'Right Lat. Canthus',   est:[0,0,0]},
+  {label:'5',  name:'Left Palp. Superius',  est:[0,0,0]},
+  {label:'6',  name:'Right Palp. Superius', est:[0,0,0]},
+  {label:'7',  name:'Left Palp. Inferius',  est:[0,0,0]},
+  {label:'8',  name:'Right Palp. Inferius', est:[0,0,0]},
+  {label:'9',  name:'Nasion',               est:[0,0,0]},
+  {label:'10', name:'Midendocanthion',       est:[0,0,0]},
+  {label:'11', name:'Pronasale',             est:[0,0,0]},
+  {label:'12', name:'Subnasale',             est:[0,0,0]},
+  {label:'13', name:'Left Alare',            est:[0,0,0]},
+  {label:'14', name:'Right Alare',           est:[0,0,0]},
+  {label:'15', name:'Labiale Superius',      est:[0,0,0]},
+  {label:'16', name:'Labiale Inferius',      est:[0,0,0]},
+  {label:'17', name:'Pogonion',              est:[0,0,0]},
+  {label:'18', name:'Right Cheilion',        est:[0,0,0]},
+  {label:'19', name:'Left Cheilion',         est:[0,0,0]},
+];
+
+const lmMarkerGroup = new THREE.Group();
+lmMarkerGroup.renderOrder = 1000;
+headGroup.add(lmMarkerGroup);
+
+// Map from sphere mesh uuid → landmark index for click detection
+const lmSphereMap = new Map();
+
+function nearestVertexIdx(pos, tx, ty, tz, midline=false){
+  let best = Infinity, idx = 0;
+  const n = pos.count;
+  for(let i=0;i<n;i++){
+    const vx = pos.getX(i);
+    if(midline && Math.abs(vx) > 0.04) continue;
+    const dx=vx-tx, dy=pos.getY(i)-ty, dz=pos.getZ(i)-tz;
+    const d=dx*dx+dy*dy+dz*dz;
+    if(d<best){best=d;idx=i;}
+  }
+  return idx;
+}
+
+function makeLmMarker(label, name, lmIdx){
+  const g = new THREE.Group();
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.013, 10, 7),
+    new THREE.MeshBasicMaterial({color:0xa78bfa, depthTest:false})
+  );
+  sphere.userData.lmIdx = lmIdx;
+  lmSphereMap.set(sphere.uuid, lmIdx);
+  g.add(sphere);
+  const canvas = document.createElement('canvas');
+  const num = parseInt(label);
+  canvas.width = num >= 10 ? 88 : 64;
+  canvas.height = 40;
+  const ctx2 = canvas.getContext('2d');
+  ctx2.font = 'bold 22px sans-serif';
+  ctx2.fillStyle = '#a78bfa';
+  ctx2.fillText(label, 3, 30);
+  const tex = new THREE.CanvasTexture(canvas);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, depthTest:false, transparent:true}));
+  const w = (num >= 10 ? 0.11 : 0.08);
+  spr.scale.set(w, 0.05, 1);
+  spr.position.set(w*0.55, 0.026, 0);
+  g.add(spr);
+  g.renderOrder = 1000;
+  const tip = document.createElement('title');
+  g.userData.name = name;
+  return g;
+}
+
+function placeLandmarks(){
+  if(!headMesh) return;
+  lmMarkerGroup.clear();
+  const pos = headMesh.geometry.attributes.position;
+  LANDMARKS.forEach((lm, idx)=>{
+    const [tx,ty,tz] = lm.est;
+    const vi = nearestVertexIdx(pos, tx, ty, tz, lm.midline||false);
+    const vx = pos.getX(vi), vy = pos.getY(vi), vz = pos.getZ(vi);
+    const marker = makeLmMarker(lm.label, lm.name, idx);
+    marker.position.set(vx, vy, vz);
+    marker.userData.localPos = new THREE.Vector3(vx, vy, vz);
+    marker.userData.lmIdx = idx;
+    lmMarkerGroup.add(marker);
+  });
+}
+
+document.getElementById('chkLandmarks').addEventListener('change', e=>{
+  lmMarkerGroup.visible = e.target.checked;
+  if(!e.target.checked) document.getElementById('lmTooltip').style.display='none';
+});
+
+// ── Landmark click → tooltip ──────────────────────────────────────────
+const lmTooltip = document.getElementById('lmTooltip');
+let activeLmTooltipIdx = null;
+
+renderer.domElement.addEventListener('click', e=>{
+  if(moveMode || !headMesh || !lmMarkerGroup.visible) return;
+  getMouseNDC(e);
+  raycaster.setFromCamera(_mouse, camera);
+
+  // Collect all sphere meshes from marker group
+  const spheres = [];
+  lmMarkerGroup.children.forEach(g=> g.children.forEach(c=>{ if(c.isMesh) spheres.push(c); }));
+  const hits = raycaster.intersectObjects(spheres, false);
+
+  if(!hits.length){
+    // click on empty space — dismiss tooltip
+    lmTooltip.style.display='none';
+    activeLmTooltipIdx=null;
+    return;
+  }
+
+  const hit = hits[0];
+  const idx = hit.object.userData.lmIdx;
+  if(idx === undefined) return;
+
+  if(activeLmTooltipIdx === idx){
+    lmTooltip.style.display='none';
+    activeLmTooltipIdx=null;
+    return;
+  }
+  activeLmTooltipIdx = idx;
+
+  const lm = LANDMARKS[idx];
+  const markerGroup = lmMarkerGroup.children[idx];
+  const lp = markerGroup.userData.localPos;
+  const wp = new THREE.Vector3();
+  markerGroup.getWorldPosition(wp);
+
+  document.getElementById('lmtt-num').textContent = `#${lm.label}`;
+  document.getElementById('lmtt-name').textContent = lm.name;
+  document.getElementById('lmtt-local').textContent =
+    `${lp.x.toFixed(3)}, ${lp.y.toFixed(3)}, ${lp.z.toFixed(3)}`;
+  document.getElementById('lmtt-world').textContent =
+    `${wp.x.toFixed(3)}, ${wp.y.toFixed(3)}, ${wp.z.toFixed(3)}`;
+
+  // Position tooltip near the click, offset so it doesn't cover the point
+  const rect = renderer.domElement.getBoundingClientRect();
+  let tx = e.clientX - rect.left + 14;
+  let ty = e.clientY - rect.top - 10;
+  lmTooltip.style.display='block';
+  // prevent overflow off right edge
+  if(tx + 220 > rect.width) tx = e.clientX - rect.left - 230;
+  lmTooltip.style.left = tx+'px';
+  lmTooltip.style.top  = ty+'px';
+});
 
 // ── Display controls ──────────────────────────────────────────────────
 let showRegionColors = false;
@@ -556,6 +731,11 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
 
   const pos=headMesh.geometry.attributes.position;
   const n=pos.count;
+  // Bake MODEL_SCALE into vertex positions
+  for(let i=0;i<pos.array.length;i++) pos.array[i]*=MODEL_SCALE;
+  pos.needsUpdate=true;
+  headMesh.geometry.computeBoundingBox();
+  headMesh.geometry.computeVertexNormals();
   origPos=new Float32Array(pos.array);
 
   // Compute feature weights
@@ -572,17 +752,19 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   headGroup.add(pointsObj);
   rebuildPointColors();
 
-  // Fit camera
+  // Fit camera — use world-space center (local bbox center + headGroup position)
   headMesh.geometry.computeBoundingBox();
   const bb=headMesh.geometry.boundingBox;
-  const ctr=new THREE.Vector3(); bb.getCenter(ctr);
+  const localCtr=new THREE.Vector3(); bb.getCenter(localCtr);
   const sz=new THREE.Vector3(); bb.getSize(sz);
+  const worldCtr = localCtr.clone().add(headGroup.position);
   const dist=sz.length()*1.1;
-  camera.position.set(ctr.x, ctr.y+sz.y*.05, ctr.z+dist);
-  ctrl.target.copy(ctr); ctrl.update();
+  camera.position.set(worldCtr.x, worldCtr.y+sz.y*0.05, worldCtr.z+dist);
+  ctrl.target.copy(worldCtr); ctrl.update();
   homePos.copy(camera.position);
   homeTarget.copy(ctrl.target);
 
+  placeLandmarks();
   document.getElementById('status').textContent=`${n.toLocaleString()} vertices · 4 regions active`;
 },(xhr)=>{
   if(xhr.total) document.getElementById('status').textContent=`Loading ${Math.round(xhr.loaded/xhr.total*100)}%`;

@@ -1,5 +1,7 @@
 # 3D Face Mesh Viewer
 
+**[Open in browser →](https://leung-martin.github.io/3DFaceMeshViewer/head_separator.html)**
+
 An interactive browser-based tool for separating and repositioning facial features on a 3D human head model. No server required — open `head_separator.html` directly in any modern browser.
 
 ## Features
