@@ -191,10 +191,10 @@ function resize(){
 window.addEventListener('resize',resize); resize();
 
 // ── Head group (wraps mesh + points so they move together) ───────────
-const MODEL_SCALE = 188.4;
+const MODEL_SCALE = 188.4 * 0.57;
 
 const headGroup = new THREE.Group();
-headGroup.position.set(0, 0.32 * MODEL_SCALE, -1.10 * MODEL_SCALE);
+headGroup.position.set(0, 81.51, -110.01);
 scene.add(headGroup);
 
 // ── Move-mode (double-click drag) ─────────────────────────────────────
@@ -211,7 +211,13 @@ function getMouseNDC(e){
   _mouse.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
 }
 
-// Head move-by-double-click disabled.
+renderer.domElement.addEventListener('dblclick', e=>{
+  if(!headMesh) return;
+  moveMode = !moveMode;
+  isDragging = false;
+  ctrl.enabled = !moveMode;
+  document.getElementById('moveHint').style.display = moveMode ? 'block' : 'none';
+});
 
 renderer.domElement.addEventListener('mousedown', e=>{
   if(!moveMode || !headMesh) return;
@@ -319,24 +325,24 @@ window.addEventListener('resize',()=>{
 
   // Central sphere
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(0.5, 12, 8),
+    new THREE.SphereGeometry(2.5, 12, 8),
     new THREE.MeshBasicMaterial({color:0xffffff, depthTest:false})
   );
   group.add(sphere);
 
   // Sprite label "0,0,0"
   const canvas = document.createElement('canvas');
-  canvas.width=128; canvas.height=48;
+  canvas.width=256; canvas.height=96;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle='rgba(0,0,0,0)';
-  ctx.fillRect(0,0,128,48);
-  ctx.font='bold 22px monospace';
+  ctx.fillRect(0,0,256,96);
+  ctx.font='bold 56px monospace';
   ctx.fillStyle='#ffffff';
-  ctx.fillText('0,0,0',8,32);
+  ctx.fillText('0,0,0',12,66);
   const tex = new THREE.CanvasTexture(canvas);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
-  sprite.scale.set(0.35,0.13,1);
-  sprite.position.set(0.04,0.06,0);
+  sprite.scale.set(70,26,1);
+  sprite.position.set(8,12,0);
   group.add(sprite);
 
   group.renderOrder = 999;
@@ -748,7 +754,7 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   for(let i=0;i<n;i++){hp[i*3]=pos.getX(i);hp[i*3+1]=pos.getY(i);hp[i*3+2]=pos.getZ(i);}
   hg.setAttribute('position',new THREE.BufferAttribute(hp,3));
   hg.setAttribute('color',new THREE.BufferAttribute(hc,3));
-  pointsObj=new THREE.Points(hg,new THREE.PointsMaterial({size:2,vertexColors:true,transparent:true,opacity:.85,sizeAttenuation:true}));
+  pointsObj=new THREE.Points(hg,new THREE.PointsMaterial({size:2,vertexColors:true,transparent:true,opacity:.85,sizeAttenuation:true,depthTest:false}));
   headGroup.add(pointsObj);
   rebuildPointColors();
 
