@@ -748,7 +748,7 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   for(let i=0;i<n;i++){hp[i*3]=pos.getX(i);hp[i*3+1]=pos.getY(i);hp[i*3+2]=pos.getZ(i);}
   hg.setAttribute('position',new THREE.BufferAttribute(hp,3));
   hg.setAttribute('color',new THREE.BufferAttribute(hc,3));
-  pointsObj=new THREE.Points(hg,new THREE.PointsMaterial({size:.2,vertexColors:true,transparent:true,opacity:.85,sizeAttenuation:true}));
+  pointsObj=new THREE.Points(hg,new THREE.PointsMaterial({size:2,vertexColors:true,transparent:true,opacity:.85,sizeAttenuation:true}));
   headGroup.add(pointsObj);
   rebuildPointColors();
 
