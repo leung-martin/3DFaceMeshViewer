@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Head Feature Separator</title>
+<title>3D Facial Artery Visualizer</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#12121f;color:#dde;font-family:'Segoe UI',sans-serif;display:flex;height:100vh;overflow:hidden}
@@ -81,7 +81,7 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
   </div>
 </div>
 <div id="sidebar">
-  <h1>Head Feature Separator</h1>
+  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.1.0</span></h1>
 
   <div id="globalCard">
     <div class="card-title">Display</div>
@@ -319,7 +319,7 @@ window.addEventListener('resize',()=>{
 
   // Central sphere
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(0.025, 12, 8),
+    new THREE.SphereGeometry(0.5, 12, 8),
     new THREE.MeshBasicMaterial({color:0xffffff, depthTest:false})
   );
   group.add(sphere);
@@ -580,7 +580,7 @@ function nearestVertexIdx(pos, tx, ty, tz, midline=false){
 function makeLmMarker(label, name, lmIdx){
   const g = new THREE.Group();
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(0.013, 10, 7),
+    new THREE.SphereGeometry(0.3, 10, 7),
     new THREE.MeshBasicMaterial({color:0xa78bfa, depthTest:false})
   );
   sphere.userData.lmIdx = lmIdx;
@@ -748,7 +748,7 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   for(let i=0;i<n;i++){hp[i*3]=pos.getX(i);hp[i*3+1]=pos.getY(i);hp[i*3+2]=pos.getZ(i);}
   hg.setAttribute('position',new THREE.BufferAttribute(hp,3));
   hg.setAttribute('color',new THREE.BufferAttribute(hc,3));
-  pointsObj=new THREE.Points(hg,new THREE.PointsMaterial({size:.007,vertexColors:true,transparent:true,opacity:.85,sizeAttenuation:true}));
+  pointsObj=new THREE.Points(hg,new THREE.PointsMaterial({size:.2,vertexColors:true,transparent:true,opacity:.85,sizeAttenuation:true}));
   headGroup.add(pointsObj);
   rebuildPointColors();
 
