@@ -347,6 +347,30 @@ window.addEventListener('resize',()=>{
 
   group.renderOrder = 999;
   scene.add(group);
+
+  // Secondary marker at (0, 240, 0)
+  const group2 = new THREE.Group();
+  group2.position.set(0, 240, 0);
+  const sphere2 = new THREE.Mesh(
+    new THREE.SphereGeometry(2.5, 12, 8),
+    new THREE.MeshBasicMaterial({color:0xffffff, depthTest:false})
+  );
+  group2.add(sphere2);
+  const canvas2 = document.createElement('canvas');
+  canvas2.width=256; canvas2.height=96;
+  const ctx2 = canvas2.getContext('2d');
+  ctx2.fillStyle='rgba(0,0,0,0)';
+  ctx2.fillRect(0,0,256,96);
+  ctx2.font='bold 56px monospace';
+  ctx2.fillStyle='#ffffff';
+  ctx2.fillText('0,240,0',12,66);
+  const tex2 = new THREE.CanvasTexture(canvas2);
+  const sprite2 = new THREE.Sprite(new THREE.SpriteMaterial({map:tex2,depthTest:false,transparent:true}));
+  sprite2.scale.set(70,26,1);
+  sprite2.position.set(8,12,0);
+  group2.add(sprite2);
+  group2.renderOrder = 999;
+  scene.add(group2);
 })();
 
 // ── Feature definitions ───────────────────────────────────────────────
@@ -419,6 +443,7 @@ FEATURES.forEach(feat=>{
 
 // ── Model state ───────────────────────────────────────────────────────
 let headMesh=null, origPos=null;
+window._getHeadMesh = ()=>headMesh;
 const featureWeights={};
 let pointsObj=null;
 
@@ -541,31 +566,32 @@ window.resetAll=function(){
 // est: [X, Y, Z] in headGroup local space. midline:true → search restricted to |X|<0.04
 // so midline points (9,10,11,12,15,16,17) always land on the face's X=0 axis.
 // Eye Z raised to eyelid surface (~0.92-0.96); mouth corner Z raised to lip surface (~1.06).
+// world: [X, Y, Z] — placed exactly in world space on the Z=0 plane
 const LANDMARKS = [
-  {label:'1',  name:'Left Med. Canthus',    est:[0,0,0]},
-  {label:'2',  name:'Right Med. Canthus',   est:[0,0,0]},
-  {label:'3',  name:'Left Lat. Canthus',    est:[0,0,0]},
-  {label:'4',  name:'Right Lat. Canthus',   est:[0,0,0]},
-  {label:'5',  name:'Left Palp. Superius',  est:[0,0,0]},
-  {label:'6',  name:'Right Palp. Superius', est:[0,0,0]},
-  {label:'7',  name:'Left Palp. Inferius',  est:[0,0,0]},
-  {label:'8',  name:'Right Palp. Inferius', est:[0,0,0]},
-  {label:'9',  name:'Nasion',               est:[0,0,0]},
-  {label:'10', name:'Midendocanthion',       est:[0,0,0]},
-  {label:'11', name:'Pronasale',             est:[0,0,0]},
-  {label:'12', name:'Subnasale',             est:[0,0,0]},
-  {label:'13', name:'Left Alare',            est:[0,0,0]},
-  {label:'14', name:'Right Alare',           est:[0,0,0]},
-  {label:'15', name:'Labiale Superius',      est:[0,0,0]},
-  {label:'16', name:'Labiale Inferius',      est:[0,0,0]},
-  {label:'17', name:'Pogonion',              est:[0,0,0]},
-  {label:'18', name:'Right Cheilion',        est:[0,0,0]},
-  {label:'19', name:'Left Cheilion',         est:[0,0,0]},
+  {label:'1',  name:'Endocanthion (inner), subj-left',          world:[ 21.0, 117.2, 0]},
+  {label:'2',  name:'Endocanthion (inner), subj-right',         world:[-21.0, 117.2, 0]},
+  {label:'3',  name:'Exocanthion (outer), subj-left',           world:[ 50.7, 118.2, 0]},
+  {label:'4',  name:'Exocanthion (outer), subj-right',          world:[-50.7, 118.2, 0]},
+  {label:'5',  name:'Palpebrale superius, subj-left',           world:[ 35.8, 121.1, 0]},
+  {label:'6',  name:'Palpebrale superius, subj-right',          world:[-35.8, 121.1, 0]},
+  {label:'7',  name:'Palpebrale inferius, subj-left',           world:[ 35.8, 114.8, 0]},
+  {label:'8',  name:'Palpebrale inferius, subj-right',          world:[-35.8, 114.8, 0]},
+  {label:'9',  name:'Nasion',                                    world:[  0.0, 121.4, 0]},
+  {label:'10', name:'Midendocanthion',                           world:[  0.0, 117.2, 0]},
+  {label:'11', name:'Nasal bridge / pronasale',                  world:[  0.0,  81.7, 0]},
+  {label:'12', name:'Subnasale',                                 world:[  0.0,  69.5, 0]},
+  {label:'13', name:'Alare, subj-left',                          world:[ 15.1,  76.8, 0]},
+  {label:'14', name:'Alare, subj-right',                         world:[-15.1,  76.8, 0]},
+  {label:'15', name:'Labiale superius',                          world:[  0.0,  49.0, 0]},
+  {label:'16', name:'Labiale inferius',                          world:[  0.0,  40.2, 0]},
+  {label:'17', name:'Pogonion (chin)',                           world:[  0.0,   8.6, 0]},
+  {label:'18', name:'Cheilion (mouth corner), subj-left',        world:[ 27.1,  47.5, 0]},
+  {label:'19', name:'Cheilion (mouth corner), subj-right',       world:[-27.1,  47.5, 0]},
 ];
 
 const lmMarkerGroup = new THREE.Group();
 lmMarkerGroup.renderOrder = 1000;
-headGroup.add(lmMarkerGroup);
+scene.add(lmMarkerGroup);
 
 // Map from sphere mesh uuid → landmark index for click detection
 const lmSphereMap = new Map();
@@ -586,7 +612,7 @@ function nearestVertexIdx(pos, tx, ty, tz, midline=false){
 function makeLmMarker(label, name, lmIdx){
   const g = new THREE.Group();
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3, 10, 7),
+    new THREE.SphereGeometry(3, 10, 7),
     new THREE.MeshBasicMaterial({color:0xa78bfa, depthTest:false})
   );
   sphere.userData.lmIdx = lmIdx;
@@ -602,31 +628,27 @@ function makeLmMarker(label, name, lmIdx){
   ctx2.fillText(label, 3, 30);
   const tex = new THREE.CanvasTexture(canvas);
   const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, depthTest:false, transparent:true}));
-  const w = (num >= 10 ? 0.11 : 0.08);
-  spr.scale.set(w, 0.05, 1);
-  spr.position.set(w*0.55, 0.026, 0);
+  const w = (num >= 10 ? 11 : 8);
+  spr.scale.set(w, 5, 1);
+  spr.position.set(w*0.55, 2.6, 0);
   g.add(spr);
   g.renderOrder = 1000;
-  const tip = document.createElement('title');
   g.userData.name = name;
   return g;
 }
 
 function placeLandmarks(){
-  if(!headMesh) return;
   lmMarkerGroup.clear();
-  const pos = headMesh.geometry.attributes.position;
   LANDMARKS.forEach((lm, idx)=>{
-    const [tx,ty,tz] = lm.est;
-    const vi = nearestVertexIdx(pos, tx, ty, tz, lm.midline||false);
-    const vx = pos.getX(vi), vy = pos.getY(vi), vz = pos.getZ(vi);
+    const [wx, wy, wz] = lm.world;
     const marker = makeLmMarker(lm.label, lm.name, idx);
-    marker.position.set(vx, vy, vz);
-    marker.userData.localPos = new THREE.Vector3(vx, vy, vz);
+    marker.position.set(wx, wy, wz);
+    marker.userData.worldPos = new THREE.Vector3(wx, wy, wz);
     marker.userData.lmIdx = idx;
     lmMarkerGroup.add(marker);
   });
 }
+placeLandmarks();
 
 document.getElementById('chkLandmarks').addEventListener('change', e=>{
   lmMarkerGroup.visible = e.target.checked;
@@ -667,16 +689,13 @@ renderer.domElement.addEventListener('click', e=>{
 
   const lm = LANDMARKS[idx];
   const markerGroup = lmMarkerGroup.children[idx];
-  const lp = markerGroup.userData.localPos;
-  const wp = new THREE.Vector3();
-  markerGroup.getWorldPosition(wp);
+  const wp = markerGroup.userData.worldPos;
 
   document.getElementById('lmtt-num').textContent = `#${lm.label}`;
   document.getElementById('lmtt-name').textContent = lm.name;
-  document.getElementById('lmtt-local').textContent =
-    `${lp.x.toFixed(3)}, ${lp.y.toFixed(3)}, ${lp.z.toFixed(3)}`;
+  document.getElementById('lmtt-local').textContent = '—';
   document.getElementById('lmtt-world').textContent =
-    `${wp.x.toFixed(3)}, ${wp.y.toFixed(3)}, ${wp.z.toFixed(3)}`;
+    `${wp.x.toFixed(2)}, ${wp.y.toFixed(2)}, ${wp.z.toFixed(2)}`;
 
   // Position tooltip near the click, offset so it doesn't cover the point
   const rect = renderer.domElement.getBoundingClientRect();
