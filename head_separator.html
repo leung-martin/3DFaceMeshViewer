@@ -444,6 +444,20 @@ FEATURES.forEach(feat=>{
 // ── Model state ───────────────────────────────────────────────────────
 let headMesh=null, origPos=null;
 window._getHeadMesh = ()=>headMesh;
+window._THREE = THREE;
+window._scene = scene;
+window._headGroup = headGroup;
+window._highlightVertex = (lx, ly, lz)=>{
+  const old = scene.getObjectByName('__highlight__');
+  if(old) headGroup.remove(old);
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(4,10,7),
+    new THREE.MeshBasicMaterial({color:0xffff00, depthTest:false})
+  );
+  m.name='__highlight__'; m.renderOrder=2000;
+  m.position.set(lx, ly, lz);
+  headGroup.add(m);
+};
 const featureWeights={};
 let pointsObj=null;
 
@@ -566,32 +580,32 @@ window.resetAll=function(){
 // est: [X, Y, Z] in headGroup local space. midline:true → search restricted to |X|<0.04
 // so midline points (9,10,11,12,15,16,17) always land on the face's X=0 axis.
 // Eye Z raised to eyelid surface (~0.92-0.96); mouth corner Z raised to lip surface (~1.06).
-// world: [X, Y, Z] — placed exactly in world space on the Z=0 plane
+// local: [X, Y, Z] — headGroup local space, nearest front-face vertex (local Z>50) by world XY
 const LANDMARKS = [
-  {label:'1',  name:'Endocanthion (inner), subj-left',          world:[ 21.0, 117.2, 0]},
-  {label:'2',  name:'Endocanthion (inner), subj-right',         world:[-21.0, 117.2, 0]},
-  {label:'3',  name:'Exocanthion (outer), subj-left',           world:[ 50.7, 118.2, 0]},
-  {label:'4',  name:'Exocanthion (outer), subj-right',          world:[-50.7, 118.2, 0]},
-  {label:'5',  name:'Palpebrale superius, subj-left',           world:[ 35.8, 121.1, 0]},
-  {label:'6',  name:'Palpebrale superius, subj-right',          world:[-35.8, 121.1, 0]},
-  {label:'7',  name:'Palpebrale inferius, subj-left',           world:[ 35.8, 114.8, 0]},
-  {label:'8',  name:'Palpebrale inferius, subj-right',          world:[-35.8, 114.8, 0]},
-  {label:'9',  name:'Nasion',                                    world:[  0.0, 121.4, 0]},
-  {label:'10', name:'Midendocanthion',                           world:[  0.0, 117.2, 0]},
-  {label:'11', name:'Nasal bridge / pronasale',                  world:[  0.0,  81.7, 0]},
-  {label:'12', name:'Subnasale',                                 world:[  0.0,  69.5, 0]},
-  {label:'13', name:'Alare, subj-left',                          world:[ 15.1,  76.8, 0]},
-  {label:'14', name:'Alare, subj-right',                         world:[-15.1,  76.8, 0]},
-  {label:'15', name:'Labiale superius',                          world:[  0.0,  49.0, 0]},
-  {label:'16', name:'Labiale inferius',                          world:[  0.0,  40.2, 0]},
-  {label:'17', name:'Pogonion (chin)',                           world:[  0.0,   8.6, 0]},
-  {label:'18', name:'Cheilion (mouth corner), subj-left',        world:[ 27.1,  47.5, 0]},
-  {label:'19', name:'Cheilion (mouth corner), subj-right',       world:[-27.1,  47.5, 0]},
+  {label:'1',  name:'Endocanthion (inner), subj-left',          world:[ 21.3317,  35.7603,  97.2090]},
+  {label:'2',  name:'Endocanthion (inner), subj-right',         world:[-21.3317,  35.7603,  97.2090]},
+  {label:'3',  name:'Exocanthion (outer), subj-left',           world:[ 50.9219,  36.7634,  90.6533]},
+  {label:'4',  name:'Exocanthion (outer), subj-right',          world:[-50.9219,  36.7634,  90.6533]},
+  {label:'5',  name:'Palpebrale superius, subj-left',           world:[ 35.8598,  39.4845,  99.7420]},
+  {label:'6',  name:'Palpebrale superius, subj-right',          world:[-35.8598,  39.4845,  99.7420]},
+  {label:'7',  name:'Palpebrale inferius, subj-left',           world:[ 36.1938,  33.7601,  99.3386]},
+  {label:'8',  name:'Palpebrale inferius, subj-right',          world:[-36.1938,  33.7601,  99.3386]},
+  {label:'9',  name:'Nasion',                                    world:[  0.0000,  39.5520, 115.3844]},
+  {label:'10', name:'Midendocanthion',                           world:[  0.0000,  35.8044, 117.1646]},
+  {label:'11', name:'Nasal bridge / pronasale',                  world:[  0.0000,   0.2891, 139.0026]},
+  {label:'12', name:'Subnasale',                                 world:[  0.0000, -12.5263, 123.1505]},
+  {label:'13', name:'Alare, subj-left',                          world:[ 14.8033,  -5.2705, 121.0659]},
+  {label:'14', name:'Alare, subj-right',                         world:[-14.8033,  -5.2705, 121.0659]},
+  {label:'15', name:'Labiale superius',                          world:[  0.0000, -32.8310, 119.7531]},
+  {label:'16', name:'Labiale inferius',                          world:[  0.0000, -41.6374, 120.9825]},
+  {label:'17', name:'Pogonion (chin)',                           world:[  0.0000, -72.5562, 114.4136]},
+  {label:'18', name:'Cheilion (mouth corner), subj-left',        world:[ 27.2766, -33.8252, 106.8387]},
+  {label:'19', name:'Cheilion (mouth corner), subj-right',       world:[-27.2766, -33.8252, 106.8387]},
 ];
 
 const lmMarkerGroup = new THREE.Group();
 lmMarkerGroup.renderOrder = 1000;
-scene.add(lmMarkerGroup);
+headGroup.add(lmMarkerGroup);
 
 // Map from sphere mesh uuid → landmark index for click detection
 const lmSphereMap = new Map();
