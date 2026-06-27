@@ -283,9 +283,20 @@ function updateInfoPanel(){
   }
 }
 
+function updateLandmarkPositions(){
+  if(!headMesh || !lmMarkerGroup.visible) return;
+  const pos = headMesh.geometry.attributes.position;
+  lmMarkerGroup.children.forEach(marker=>{
+    const vi = marker.userData.vertexIdx;
+    if(vi === undefined) return;
+    marker.position.set(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+  });
+}
+
 function loop(){
   requestAnimationFrame(loop);
   ctrl.update();
+  updateLandmarkPositions();
   renderer.render(scene,camera);
   updateInfoPanel();
 }
@@ -651,18 +662,33 @@ function makeLmMarker(label, name, lmIdx){
   return g;
 }
 
+function nearestFrontVertexIdx(pos, lx, ly){
+  // Search all vertices with local Z > 50 (front face), nearest by local XY
+  let best = Infinity, idx = 0;
+  for(let i=0;i<pos.count;i++){
+    if(pos.getZ(i) < 50) continue;
+    const dx = pos.getX(i) - lx;
+    const dy = pos.getY(i) - ly;
+    const d = dx*dx + dy*dy;
+    if(d < best){ best=d; idx=i; }
+  }
+  return idx;
+}
+
 function placeLandmarks(){
+  if(!headMesh) return;
   lmMarkerGroup.clear();
+  const pos = headMesh.geometry.attributes.position;
   LANDMARKS.forEach((lm, idx)=>{
-    const [wx, wy, wz] = lm.world;
+    const [wx, wy] = lm.world; // world XY target
+    const vi = nearestFrontVertexIdx(pos, wx, wy);
     const marker = makeLmMarker(lm.label, lm.name, idx);
-    marker.position.set(wx, wy, wz);
-    marker.userData.worldPos = new THREE.Vector3(wx, wy, wz);
+    marker.position.set(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+    marker.userData.vertexIdx = vi;
     marker.userData.lmIdx = idx;
     lmMarkerGroup.add(marker);
   });
 }
-placeLandmarks();
 
 document.getElementById('chkLandmarks').addEventListener('change', e=>{
   lmMarkerGroup.visible = e.target.checked;
