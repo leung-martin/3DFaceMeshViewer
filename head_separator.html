@@ -16,11 +16,24 @@ h1{font-size:14px;color:#c97;text-align:center;padding-bottom:8px;border-bottom:
 .vis-toggle{font-size:10px;color:#777;cursor:pointer;padding:2px 6px;border:1px solid #444;border-radius:3px;background:none;color:#aaa}
 .vis-toggle.active{background:var(--ac);color:#111;border-color:var(--ac)}
 .slider-group label{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:11px;color:#99a}
+.slider-group label.adj-label{flex-direction:column;align-items:stretch;gap:3px;margin-bottom:10px}
+.adj-label .adj-header{display:flex;align-items:baseline;justify-content:space-between;gap:4px}
+.adj-label .adj-name{font-size:12px;color:#99a;line-height:1.3;flex:1}
+.adj-label .adj-row{display:flex;align-items:center;gap:4px}
+.adj-static{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;color:#556;padding:2px 0}
+.adj-static .adj-name{flex:1;color:#667}
+.adj-static .adj-badge{font-size:10px;color:#445;border:1px solid #2a2a50;border-radius:3px;padding:1px 5px}
 .slider-group label span{width:30px}
 .slider-group input[type=range]{flex:1;accent-color:var(--ac);height:3px;cursor:pointer}
 .slider-group .val{width:36px;text-align:right;font-size:11px;color:#cc9}
+.sl-reset{background:none;border:1px solid #334;border-radius:3px;color:#555;font-size:10px;cursor:pointer;padding:1px 4px;flex-shrink:0;line-height:1}
+.sl-reset:hover{border-color:#c97;color:#c97}
 .region-divider{border-top:1px dashed #2a2a50;margin:8px 0;padding-top:8px}
 .region-label{font-size:10px;color:#666;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em}
+.adv-toggle{width:100%;background:none;border:1px solid #2a2a50;border-radius:4px;color:#556;font-size:10px;cursor:pointer;padding:3px 8px;text-align:left;display:flex;justify-content:space-between;align-items:center;margin-bottom:0}
+.adv-toggle:hover{border-color:#446;color:#99a}
+.adv-body{display:none;margin-top:6px}
+.adv-body.open{display:block}
 .mini-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}
 .mini-row input[type=number]{width:60px;background:#07071a;border:1px solid #334;border-radius:3px;color:#ccd;font-size:11px;padding:2px 4px}
 .mini-row label{font-size:10px;color:#667;align-self:center}
@@ -60,8 +73,7 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
 </head>
 <body>
 <div id="viewport">
-  <div id="info">Drag to orbit &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Right-drag to pan &nbsp;|&nbsp; Double-click head to move</div>
-  <div id="moveHint">MOVE MODE — drag to reposition &nbsp;·&nbsp; Esc or double-click to exit</div>
+  <div id="info">Drag to orbit &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Right-drag to pan</div>
   <div id="infoPanel">
     <h3>Positions</h3>
     <div class="info-row"><span class="lbl">Head</span><span class="coords" id="ip-head">—</span></div>
@@ -72,7 +84,6 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
   <div id="lmTooltip">
     <div class="lm-tt-num" id="lmtt-num"></div>
     <div class="lm-tt-name" id="lmtt-name"></div>
-    <div class="lm-tt-row"><span class="lm-tt-lbl">Local</span><span class="lm-tt-val" id="lmtt-local"></span></div>
     <div class="lm-tt-row"><span class="lm-tt-lbl">World</span><span class="lm-tt-val" id="lmtt-world"></span></div>
   </div>
   <div id="camControls">
@@ -92,9 +103,15 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
     </div>
   </div>
 
-  <div id="featureCards"></div>
+  <button class="adv-toggle" id="advToggle" onclick="document.getElementById('advBody').classList.toggle('open');this.querySelector('.adv-arrow').textContent=document.getElementById('advBody').classList.contains('open')?'▲':'▼'">
+    Advanced Controls <span class="adv-arrow">▼</span>
+  </button>
+  <div class="adv-body" id="advBody">
+    <div id="featureCards"></div>
+    <button class="reset" onclick="resetAll()">Reset All Offsets</button>
+  </div>
 
-  <button class="reset" onclick="resetAll()">Reset All Offsets</button>
+  <div id="adjustmentCards"></div>
 
   <div id="landmarkCard">
     <div class="lc-title">Landmarks</div>
@@ -197,70 +214,14 @@ const headGroup = new THREE.Group();
 headGroup.position.set(0, 81.51, -110.01);
 scene.add(headGroup);
 
-// ── Move-mode (double-click drag) ─────────────────────────────────────
-let moveMode = false;
-let isDragging = false;
+// ── Raycaster / mouse ────────────────────────────────────────────────
 const raycaster = new THREE.Raycaster();
-const movePlane = new THREE.Plane();
-const dragWorldStart = new THREE.Vector3();
-const groupPosStart = new THREE.Vector3();
 const _mouse = new THREE.Vector2();
 
 function getMouseNDC(e){
   const r = renderer.domElement.getBoundingClientRect();
   _mouse.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
 }
-
-renderer.domElement.addEventListener('dblclick', e=>{
-  if(!headMesh) return;
-  moveMode = !moveMode;
-  isDragging = false;
-  ctrl.enabled = !moveMode;
-  document.getElementById('moveHint').style.display = moveMode ? 'block' : 'none';
-});
-
-renderer.domElement.addEventListener('mousedown', e=>{
-  if(!moveMode || !headMesh) return;
-  getMouseNDC(e);
-  raycaster.setFromCamera(_mouse, camera);
-  const hits = raycaster.intersectObject(headMesh);
-  const hitPt = hits.length > 0 ? hits[0].point : (() => {
-    // fall back: intersect plane through group center
-    const p = new THREE.Plane();
-    const cd = new THREE.Vector3(); camera.getWorldDirection(cd);
-    p.setFromNormalAndCoplanarPoint(cd, headGroup.position);
-    const t = new THREE.Vector3();
-    raycaster.ray.intersectPlane(p, t); return t;
-  })();
-  if(!hitPt) return;
-  const cd = new THREE.Vector3(); camera.getWorldDirection(cd);
-  movePlane.setFromNormalAndCoplanarPoint(cd, hitPt);
-  dragWorldStart.copy(hitPt);
-  groupPosStart.copy(headGroup.position);
-  isDragging = true;
-  e.stopPropagation();
-});
-
-renderer.domElement.addEventListener('mousemove', e=>{
-  if(!moveMode || !isDragging) return;
-  getMouseNDC(e);
-  raycaster.setFromCamera(_mouse, camera);
-  const t = new THREE.Vector3();
-  if(!raycaster.ray.intersectPlane(movePlane, t)) return;
-  headGroup.position.copy(groupPosStart).add(t.sub(dragWorldStart));
-  updateInfoPanel();
-  e.stopPropagation();
-});
-
-renderer.domElement.addEventListener('mouseup', ()=>{ isDragging=false; });
-
-window.addEventListener('keydown', e=>{
-  if(e.key==='Escape' && moveMode){
-    moveMode=false; isDragging=false;
-    ctrl.enabled=true;
-    document.getElementById('moveHint').style.display='none';
-  }
-});
 
 // ── Info panel ────────────────────────────────────────────────────────
 function fmt(v){ return v.toFixed(2); }
@@ -297,6 +258,7 @@ function loop(){
   requestAnimationFrame(loop);
   ctrl.update();
   updateLandmarkPositions();
+  updateActiveLmTooltip();
   renderer.render(scene,camera);
   updateInfoPanel();
 }
@@ -347,9 +309,9 @@ window.addEventListener('resize',()=>{
   const ctx = canvas.getContext('2d');
   ctx.fillStyle='rgba(0,0,0,0)';
   ctx.fillRect(0,0,256,96);
-  ctx.font='bold 56px monospace';
+  ctx.font='bold 28px monospace';
   ctx.fillStyle='#ffffff';
-  ctx.fillText('0,0,0',12,66);
+  ctx.fillText('0,0,0',12,50);
   const tex = new THREE.CanvasTexture(canvas);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
   sprite.scale.set(70,26,1);
@@ -381,6 +343,7 @@ window.addEventListener('resize',()=>{
   sprite2.position.set(8,12,0);
   group2.add(sprite2);
   group2.renderOrder = 999;
+  group2.visible = false;
   scene.add(group2);
 })();
 
@@ -389,9 +352,9 @@ window.addEventListener('resize',()=>{
 // X:[-0.957,0.957], Y:[-1.737,1.385], Z:[-0.932,1.297]
 const S = MODEL_SCALE;
 const FEATURES = [
-  {id:'eyes', label:'Eyes', color:'#ff9f6b', center:[0.30*S, 0.40*S, 0.93*S], radius:0.32*S, symmetric:true},
-  {id:'nose',  label:'Nose',  color:'#6bffaa', center:[0.00,   0.02*S, 1.08*S], radius:0.38*S, noX:true},
-  {id:'mouth', label:'Mouth', color:'#ffd56b', center:[0.00,  -0.21*S, 1.05*S], radius:0.40*S, noX:true},
+  {id:'eyes', label:'Eyes', color:'#ff9f6b', center:[24.9, 32.6, 99.9], radius:34.4, symmetric:true, falloff:2},
+  {id:'nose',  label:'Nose',  color:'#6bffaa', center:[0.00,   0.02*S, 1.08*S], radius:0.38*S, noX:true, falloff:2},
+  {id:'mouth', label:'Mouth', color:'#ffd56b', center:[0.00,  -0.21*S, 1.05*S], radius:0.40*S, noX:true, falloff:2},
 ];
 
 const offsets = {};
@@ -401,9 +364,11 @@ FEATURES.forEach(f=>{ offsets[f.id]={x:0,y:0,z:0}; });
 // For symmetric features, center stores the RIGHT eye; left is auto-mirrored.
 const editCenters = {};
 const editRadii = {};
+const editFalloffs = {};
 FEATURES.forEach(f=>{
   editCenters[f.id] = [...f.center];
   editRadii[f.id] = f.radius;
+  editFalloffs[f.id] = f.falloff;
 });
 
 // ── Build UI cards ────────────────────────────────────────────────────
@@ -411,7 +376,7 @@ const fcEl = document.getElementById('featureCards');
 FEATURES.forEach(feat=>{
   const card = document.createElement('div');
   card.className='card'; card.style.setProperty('--ac',feat.color);
-  const axLabels = feat.symmetric ? {x:'Spread',y:'Y',z:'Z'} : {x:'X',y:'Y',z:'Z'};
+  const axLabels = feat.symmetric ? {x:'LM1/2 X',y:'Y',z:'Z'} : {x:'X',y:'Y',z:'Z'};
   const rcXLabel = feat.symmetric ? 'Half-X' : 'X';
   const activeAxes = feat.noX ? ['y','z'] : ['x','y','z'];
   card.innerHTML=`
@@ -421,20 +386,46 @@ FEATURES.forEach(feat=>{
       <button class="vis-toggle active" id="vis_${feat.id}" onclick="toggleVis('${feat.id}',this)">●</button>
     </div>
     <div class="slider-group">
-      ${activeAxes.map(ax=>`
-        <label><span>${axLabels[ax]}</span>
-          <input type="range" id="${feat.id}_${ax}" min="${(-0.06*S).toFixed(2)}" max="${(0.06*S).toFixed(2)}" step="${(0.0004*S).toFixed(4)}" value="0">
-          <span class="val" id="${feat.id}_${ax}_v">0.00</span>
-        </label>`).join('')}
+      ${activeAxes.map(ax=>{
+        const isLmX = feat.symmetric && ax==='x';
+        const mn = isLmX ? '0' : (-0.06*S).toFixed(2);
+        const mx = isLmX ? '60' : (0.06*S).toFixed(2);
+        const st = isLmX ? '0.01' : (0.0004*S).toFixed(4);
+        const def = isLmX ? '21.33' : '0';
+        return `<label><span>${axLabels[ax]}</span>
+          <input type="range" id="${feat.id}_${ax}" min="${mn}" max="${mx}" step="${st}" value="${def}" data-default="${def}">
+          <span class="val" id="${feat.id}_${ax}_v">${isLmX ? '21.33' : '0.00'}</span>
+          <button class="sl-reset" onclick="resetSlider('${feat.id}_${ax}')">↺</button>
+        </label>`;
+      }).join('')}
     </div>
     <div class="region-divider">
-      <div class="region-label">Region center &amp; radius${feat.symmetric?' (right eye; left mirrored)':''}</div>
-      <div class="mini-row">
-        <label>${rcXLabel}</label><input type="number" id="rc_${feat.id}_x" step="0.05" value="${feat.center[0].toFixed(2)}">
-        <label>Y</label><input type="number" id="rc_${feat.id}_y" step="0.05" value="${feat.center[1].toFixed(2)}">
-        <label>Z</label><input type="number" id="rc_${feat.id}_z" step="0.05" value="${feat.center[2].toFixed(2)}">
-        <label>R</label><input type="number" id="rc_${feat.id}_r" step="0.02" value="${feat.radius.toFixed(2)}">
-        <button class="reset" style="width:auto;padding:2px 8px;margin-top:4px" onclick="recomputeFeature('${feat.id}')">Apply</button>
+      <div class="slider-group">
+        <label><span>Falloff</span>
+          <input type="range" id="${feat.id}_falloff" min="0.2" max="8" step="0.1" value="${feat.falloff}" data-default="${feat.falloff}">
+          <span class="val" id="${feat.id}_falloff_v">${feat.falloff.toFixed(1)}</span>
+          <button class="sl-reset" onclick="resetSlider('${feat.id}_falloff')">↺</button>
+        </label>
+        <label><span>Radius</span>
+          <input type="range" id="rc_${feat.id}_r" min="5" max="120" step="0.1" value="${feat.radius.toFixed(1)}" data-default="${feat.radius.toFixed(1)}">
+          <span class="val" id="rc_${feat.id}_r_v">${feat.radius.toFixed(1)}</span>
+          <button class="sl-reset" onclick="resetSlider('rc_${feat.id}_r')">↺</button>
+        </label>
+        ${feat.symmetric ? `<label><span>${rcXLabel}</span>
+          <input type="range" id="rc_${feat.id}_x" min="0" max="80" step="0.1" value="${feat.center[0].toFixed(1)}" data-default="${feat.center[0].toFixed(1)}">
+          <span class="val" id="rc_${feat.id}_x_v">${feat.center[0].toFixed(1)}</span>
+          <button class="sl-reset" onclick="resetSlider('rc_${feat.id}_x')">↺</button>
+        </label>` : ''}
+        <label><span>Center Y</span>
+          <input type="range" id="rc_${feat.id}_y" min="-80" max="80" step="0.1" value="${feat.center[1].toFixed(1)}" data-default="${feat.center[1].toFixed(1)}">
+          <span class="val" id="rc_${feat.id}_y_v">${feat.center[1].toFixed(1)}</span>
+          <button class="sl-reset" onclick="resetSlider('rc_${feat.id}_y')">↺</button>
+        </label>
+        <label><span>Center Z</span>
+          <input type="range" id="rc_${feat.id}_z" min="50" max="180" step="0.1" value="${feat.center[2].toFixed(1)}" data-default="${feat.center[2].toFixed(1)}">
+          <span class="val" id="rc_${feat.id}_z_v">${feat.center[2].toFixed(1)}</span>
+          <button class="sl-reset" onclick="resetSlider('rc_${feat.id}_z')">↺</button>
+        </label>
       </div>
     </div>
   `;
@@ -443,16 +434,129 @@ FEATURES.forEach(feat=>{
   activeAxes.forEach(ax=>{
     const sl=document.getElementById(`${feat.id}_${ax}`);
     const vl=document.getElementById(`${feat.id}_${ax}_v`);
-    sl.addEventListener('input',()=>{
-      const v=parseFloat(sl.value);
-      offsets[feat.id][ax]=v;
-      vl.textContent=v.toFixed(3);
+    if(feat.symmetric && ax==='x'){
+      sl.addEventListener('input',()=>{
+        const targetX = parseFloat(sl.value);
+        vl.textContent = targetX.toFixed(2);
+        // Back-calculate spread offset so LM1 vertex lands at targetX
+        if(lm1Vi !== null && lm1Weight > 0){
+          offsets.eyes.x = (targetX - lm1OrigX) / lm1Weight;
+        }
+        updatePositions();
+      });
+    } else {
+      sl.addEventListener('input',()=>{
+        const v=parseFloat(sl.value);
+        offsets[feat.id][ax]=v;
+        vl.textContent=v.toFixed(3);
+        updatePositions();
+      });
+    }
+  });
+
+  const fsl = document.getElementById(`${feat.id}_falloff`);
+  const fvl = document.getElementById(`${feat.id}_falloff_v`);
+  fsl.addEventListener('input',()=>{
+    editFalloffs[feat.id] = parseFloat(fsl.value);
+    fvl.textContent = parseFloat(fsl.value).toFixed(1);
+    computeWeights();
+    updatePositions();
+  });
+
+  // Live region sliders
+  const regionInputs = [
+    {id:`rc_${feat.id}_r`,  key:'r'},
+    {id:`rc_${feat.id}_x`,  key:'x'},
+    {id:`rc_${feat.id}_y`,  key:'y'},
+    {id:`rc_${feat.id}_z`,  key:'z'},
+  ];
+  regionInputs.forEach(({id, key})=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    const vl = document.getElementById(`${id}_v`);
+    el.addEventListener('input',()=>{
+      const v = parseFloat(el.value);
+      if(vl) vl.textContent = v.toFixed(1);
+      if(key==='r'){
+        editRadii[feat.id] = v;
+      } else {
+        const idx = {x:0,y:1,z:2}[key];
+        editCenters[feat.id][idx] = v;
+      }
+      computeWeights();
       updatePositions();
     });
   });
 });
 
+// ── Adjustment sliders ───────────────────────────────────────────────
+const ADJUSTMENTS = [
+  {adj:1,  artery:'DNA', name:'DNA branch (right)',         desc:'Branch position right of facial midline (upper nose)',           val:3.2,  margin:1.5},
+  {adj:2,  artery:'DNA', name:'DNA branch (left)',          desc:'Branch position left of facial midline (upper nose)',            val:3.1,  margin:1.5},
+  {adj:3,  artery:'DNA', name:'Intercanthal line',          desc:'Measurement at the intercanthal line level',                    val:7.2,  margin:0.3},
+  {adj:4,  artery:'DNA', name:'Subcanthal segment',         desc:'Vertical segment below intercanthal line to bifurcation',       val:8.5,  margin:3.5},
+  {adj:5,  artery:'DNA', name:'Nasal segment (female)',     desc:'Vertical nasal segment, female',                                val:5.6,  margin:1.7},
+  {adj:6,  artery:'DNA', name:'Nasal segment (male)',       desc:'Vertical nasal segment, male',                                  val:7.95, margin:3.5},
+  {adj:7,  artery:'DNA', name:'DNA-L',                      desc:'Lateral branch extent down the nose',                           val:7.4,  margin:6.4},
+  {adj:8,  artery:'DNA', name:'DNA-D caliber',              desc:'Dorsal nasal artery measurement along the dorsum',              val:2,    margin:0.1},
+  {adj:9,  artery:'DNA', name:'Lateral deviation',          desc:'Lateral deviation of artery from midline (cartilaginous nose)', val:4.8,  margin:0.4},
+  {adj:10, artery:'LNA', name:'LNA-L',                      desc:'Length along upper lateral nose',                               val:10.6, margin:4.5},
+  {adj:11, artery:'LNA', name:'LNA-W overall',              desc:'Overall caliber',                                               val:1.23, margin:0.37},
+  {adj:12, artery:'LNA', name:'LNA-W right',                desc:'Caliber, right',                                                val:1.55, margin:0.15},
+  {adj:13, artery:'LNA', name:'LNA-W left',                 desc:'Caliber, left',                                                 val:1.43, margin:0.17},
+  {adj:14, artery:'LNA', name:'LNA-D',                      desc:'Depth at nasolabial fold, before branching',                   val:1.08, margin:0.23},
+  {adj:15, artery:'LNA', name:'From alar base',             desc:'Distance from alar base',                                      val:1.15, margin:1.25},
+  {adj:16, artery:'LNA', name:'LNA-L from oral commissure', desc:'Length from oral commissure',                                  val:10,   margin:6.8},
+  {adj:17, artery:'SLA', name:'SLA-W at midline',           desc:'Caliber at the midline',                                       val:1.1,  margin:0.2},
+  {adj:18, artery:'SLA', name:'SLA-W overall',              desc:'Overall caliber (segmental tapering)',                          val:1.36, margin:0.28},
+  {adj:19, artery:'SLA', name:'SLA-W at commissure',        desc:'Caliber at the labial commissure',                             val:1.65, margin:0.28},
+  {adj:20, artery:'SLA', name:'SLA-L',                      desc:'Length',                                                       val:21,   margin:9.8},
+];
+
+const ARTERY_COLORS = {DNA:'#6bb8ff', LNA:'#ff9f6b', SLA:'#6bffaa'};
+
+const adjContainer = document.getElementById('adjustmentCards');
+const arteriesInOrder = ['DNA','LNA','SLA'];
+arteriesInOrder.forEach(artery=>{
+  const items = ADJUSTMENTS.filter(a=>a.artery===artery);
+  const card = document.createElement('div');
+  card.className='card'; card.style.setProperty('--ac', ARTERY_COLORS[artery]);
+  const rows = items.map(a=>{
+    if(a.margin === 0){
+      return `<div class="adj-static" title="${a.desc}">
+        <span class="adj-name">${a.name}</span>
+        <span class="adj-badge">fixed</span>
+      </div>`;
+    }
+    const mn = (a.val - a.margin).toFixed(3);
+    const mx = (a.val + a.margin).toFixed(3);
+    const step = (a.margin / 50).toFixed(4);
+    const def = a.val.toFixed(3);
+    return `<label class="adj-label" title="${a.desc}">
+      <div class="adj-header">
+        <span class="adj-name">${a.name}</span>
+        <span class="val" id="adj_${a.adj}_v">${a.val.toFixed(2)}</span>
+        <button class="sl-reset" onclick="resetSlider('adj_${a.adj}')">↺</button>
+      </div>
+      <div class="adj-row">
+        <input type="range" id="adj_${a.adj}" min="${mn}" max="${mx}" step="${step}" value="${def}" data-default="${def}">
+      </div>
+    </label>`;
+  }).join('');
+  card.innerHTML=`
+    <div class="card-head"><div class="dot"></div><div class="card-title">${artery}</div></div>
+    <div class="slider-group">${rows}</div>
+  `;
+  adjContainer.appendChild(card);
+  items.filter(a=>a.margin>0).forEach(a=>{
+    const el = document.getElementById(`adj_${a.adj}`);
+    const vl = document.getElementById(`adj_${a.adj}_v`);
+    if(el && vl) el.addEventListener('input', ()=>{ vl.textContent = parseFloat(el.value).toFixed(2); });
+  });
+});
+
 // ── Model state ───────────────────────────────────────────────────────
+let lm1Vi=null, lm1OrigX=0, lm1Weight=1;
 let headMesh=null, origPos=null;
 window._getHeadMesh = ()=>headMesh;
 window._THREE = THREE;
@@ -472,8 +576,6 @@ window._highlightVertex = (lx, ly, lz)=>{
 const featureWeights={};
 let pointsObj=null;
 
-function smoothstep(t){return t*t*(3-2*t);}
-
 function computeWeights(){
   if(!headMesh) return;
   const pos=headMesh.geometry.attributes.position;
@@ -481,21 +583,21 @@ function computeWeights(){
   FEATURES.forEach(feat=>{
     const [cx,cy,cz]=editCenters[feat.id];
     const r=editRadii[feat.id];
+    const p=editFalloffs[feat.id];
     const w=new Float32Array(n);
     if(feat.symmetric){
-      // Two mirrored spheres: right at (cx,cy,cz), left at (-cx,cy,cz)
       for(let i=0;i<n;i++){
         const px=pos.getX(i), py=pos.getY(i), pz=pos.getZ(i);
         const dr=Math.sqrt((px-cx)**2+(py-cy)**2+(pz-cz)**2);
         const dl=Math.sqrt((px+cx)**2+(py-cy)**2+(pz-cz)**2);
-        const best=Math.min(dr,dl);
-        w[i]=best<r?smoothstep(Math.max(0,1-best/r)):0;
+        const t=Math.max(0,1-Math.min(dr,dl)/r);
+        w[i]=t>0?Math.pow(t,p):0;
       }
     } else {
       for(let i=0;i<n;i++){
         const dx=pos.getX(i)-cx, dy=pos.getY(i)-cy, dz=pos.getZ(i)-cz;
-        const d=Math.sqrt(dx*dx+dy*dy+dz*dz);
-        w[i]=d<r?smoothstep(Math.max(0,1-d/r)):0;
+        const t=Math.max(0,1-Math.sqrt(dx*dx+dy*dy+dz*dz)/r);
+        w[i]=t>0?Math.pow(t,p):0;
       }
     }
     featureWeights[feat.id]=w;
@@ -520,6 +622,13 @@ function rebuildPointColors(){
   }
   pointsObj.geometry.attributes.color.needsUpdate=true;
 }
+
+window.resetSlider=function(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.value=el.dataset.default;
+  el.dispatchEvent(new Event('input'));
+};
 
 window.recomputeFeature=function(id){
   editCenters[id]=[
@@ -577,10 +686,21 @@ window.resetAll=function(){
     const axes = f.noX ? ['y','z'] : ['x','y','z'];
     axes.forEach(ax=>{
       offsets[f.id][ax]=0;
-      document.getElementById(`${f.id}_${ax}`).value=0;
-      document.getElementById(`${f.id}_${ax}_v`).textContent='0.00';
+      if(f.symmetric && ax==='x'){
+        // LM1/2 X slider shows vertex position, not raw offset
+        const v = lm1OrigX || 0;
+        document.getElementById(`${f.id}_${ax}`).value = v;
+        document.getElementById(`${f.id}_${ax}_v`).textContent = v.toFixed(2);
+      } else {
+        document.getElementById(`${f.id}_${ax}`).value=0;
+        document.getElementById(`${f.id}_${ax}_v`).textContent='0.00';
+      }
     });
+    editFalloffs[f.id] = f.falloff;
+    document.getElementById(`${f.id}_falloff`).value = f.falloff;
+    document.getElementById(`${f.id}_falloff_v`).textContent = f.falloff.toFixed(1);
   });
+  computeWeights();
   updatePositions();
 };
 
@@ -695,58 +815,62 @@ document.getElementById('chkLandmarks').addEventListener('change', e=>{
   if(!e.target.checked) document.getElementById('lmTooltip').style.display='none';
 });
 
-// ── Landmark click → tooltip ──────────────────────────────────────────
+// ── Landmark click → live position panel ─────────────────────────────
 const lmTooltip = document.getElementById('lmTooltip');
 let activeLmTooltipIdx = null;
+let activeLmVertexIdx = null;
 
 renderer.domElement.addEventListener('click', e=>{
-  if(moveMode || !headMesh || !lmMarkerGroup.visible) return;
+  if(!headMesh || !lmMarkerGroup.visible) return;
   getMouseNDC(e);
   raycaster.setFromCamera(_mouse, camera);
 
-  // Collect all sphere meshes from marker group
   const spheres = [];
   lmMarkerGroup.children.forEach(g=> g.children.forEach(c=>{ if(c.isMesh) spheres.push(c); }));
   const hits = raycaster.intersectObjects(spheres, false);
 
   if(!hits.length){
-    // click on empty space — dismiss tooltip
     lmTooltip.style.display='none';
     activeLmTooltipIdx=null;
+    activeLmVertexIdx=null;
     return;
   }
 
-  const hit = hits[0];
-  const idx = hit.object.userData.lmIdx;
+  const idx = hits[0].object.userData.lmIdx;
   if(idx === undefined) return;
 
   if(activeLmTooltipIdx === idx){
     lmTooltip.style.display='none';
     activeLmTooltipIdx=null;
+    activeLmVertexIdx=null;
     return;
   }
+
   activeLmTooltipIdx = idx;
+  activeLmVertexIdx = lmMarkerGroup.children[idx]?.userData.vertexIdx ?? null;
 
   const lm = LANDMARKS[idx];
-  const markerGroup = lmMarkerGroup.children[idx];
-  const wp = markerGroup.userData.worldPos;
-
   document.getElementById('lmtt-num').textContent = `#${lm.label}`;
   document.getElementById('lmtt-name').textContent = lm.name;
-  document.getElementById('lmtt-local').textContent = '—';
-  document.getElementById('lmtt-world').textContent =
-    `${wp.x.toFixed(2)}, ${wp.y.toFixed(2)}, ${wp.z.toFixed(2)}`;
 
-  // Position tooltip near the click, offset so it doesn't cover the point
   const rect = renderer.domElement.getBoundingClientRect();
   let tx = e.clientX - rect.left + 14;
   let ty = e.clientY - rect.top - 10;
   lmTooltip.style.display='block';
-  // prevent overflow off right edge
   if(tx + 220 > rect.width) tx = e.clientX - rect.left - 230;
   lmTooltip.style.left = tx+'px';
   lmTooltip.style.top  = ty+'px';
 });
+
+function updateActiveLmTooltip(){
+  if(activeLmVertexIdx === null || !headMesh) return;
+  const pos = headMesh.geometry.attributes.position;
+  const lx = pos.getX(activeLmVertexIdx);
+  const ly = pos.getY(activeLmVertexIdx);
+  const lz = pos.getZ(activeLmVertexIdx);
+  const hp = headGroup.position;
+  document.getElementById('lmtt-world').textContent = `${(lx+hp.x).toFixed(2)}, ${(ly+hp.y).toFixed(2)}, ${(lz+hp.z).toFixed(2)}`;
+}
 
 // ── Display controls ──────────────────────────────────────────────────
 let showRegionColors = false;
@@ -830,6 +954,17 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   homeTarget.copy(ctrl.target);
 
   placeLandmarks();
+  // Calibrate LM1/2 X slider to actual vertex position and weight
+  lm1Vi = lmMarkerGroup.children[0]?.userData.vertexIdx ?? null;
+  if(lm1Vi !== null){
+    lm1OrigX = origPos[lm1Vi * 3];
+    lm1Weight = featureWeights.eyes[lm1Vi] || 1;
+    const sl = document.getElementById('eyes_x');
+    sl.min = 0; sl.max = 60; sl.step = 0.01;
+    sl.value = lm1OrigX.toFixed(2);
+    sl.dataset.default = lm1OrigX.toFixed(2);
+    document.getElementById('eyes_x_v').textContent = lm1OrigX.toFixed(2);
+  }
   document.getElementById('status').textContent=`${n.toLocaleString()} vertices · 4 regions active`;
 },(xhr)=>{
   if(xhr.total) document.getElementById('status').textContent=`Loading ${Math.round(xhr.loaded/xhr.total*100)}%`;
