@@ -75,13 +75,6 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
 <body>
 <div id="viewport">
   <div id="info">Drag to orbit &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Right-drag to pan</div>
-  <div id="infoPanel">
-    <h3>Positions</h3>
-    <div class="info-row"><span class="lbl">Head</span><span class="coords" id="ip-head">—</span></div>
-    <div class="info-row"><span class="lbl">Eyes</span><span class="coords" id="ip-eyes">—</span></div>
-    <div class="info-row"><span class="lbl">Nose</span><span class="coords" id="ip-nose">—</span></div>
-    <div class="info-row"><span class="lbl">Mouth</span><span class="coords" id="ip-mouth">—</span></div>
-  </div>
   <div id="lmTooltip">
     <div class="lm-tt-num" id="lmtt-num"></div>
     <div class="lm-tt-name" id="lmtt-name"></div>
@@ -89,36 +82,43 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
   </div>
   <div id="camControls">
     <button id="btnResetCam" onclick="resetCamera()">Reset Camera</button>
-    <button id="btnProjToggle" onclick="toggleProjection()">Orthographic</button>
+    <button id="btnProjToggle" onclick="toggleProjection()">Perspective</button>
   </div>
 </div>
 <div id="sidebar">
-  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.5.0</span></h1>
-
-  <div id="globalCard">
-    <div class="card-title">Display</div>
-    <label class="row-check"><input type="checkbox" id="chkPoints"> Show region highlights</label>
-    <label class="row-check"><input type="checkbox" id="chkMesh" checked> Show mesh</label>
-    <div class="slider-group" style="margin-top:6px">
-      <label><span>Opacity</span><input type="range" id="meshOpacity" min="0" max="1" step="0.01" value="0.1"><span class="val" id="meshOpacity_val">0.10</span></label>
-    </div>
-  </div>
+  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.6.0</span></h1>
 
   <button class="adv-toggle" id="advToggle" onclick="document.getElementById('advBody').classList.toggle('open');this.querySelector('.adv-arrow').textContent=document.getElementById('advBody').classList.contains('open')?'▲':'▼'">
     Advanced Controls <span class="adv-arrow">▼</span>
   </button>
   <div class="adv-body" id="advBody">
+    <div id="globalCard">
+      <div class="card-title">Display</div>
+      <label class="row-check"><input type="checkbox" id="chkPoints"> Show region highlights</label>
+      <label class="row-check"><input type="checkbox" id="chkMesh" checked> Show mesh</label>
+      <div class="slider-group" style="margin-top:6px">
+        <label><span>Opacity</span><input type="range" id="meshOpacity" min="0" max="1" step="0.01" value="1"><span class="val" id="meshOpacity_val">1.00</span></label>
+      </div>
+    </div>
+    <div id="landmarkCard">
+      <div class="lc-title">Landmarks</div>
+      <label class="row-check"><input type="checkbox" id="chkLandmarks"> Show landmarks</label>
+      <div id="lmHint" style="margin-top:4px">19 anatomical points auto-mapped to nearest mesh vertex.</div>
+    </div>
+    <div id="posCard">
+      <div class="card-title">Positions</div>
+      <div class="info-row"><span class="lbl">Head</span><span class="coords" id="ip-head">—</span></div>
+      <div class="info-row"><span class="lbl">Eyes</span><span class="coords" id="ip-eyes">—</span></div>
+      <div class="info-row"><span class="lbl">Nose</span><span class="coords" id="ip-nose">—</span></div>
+      <div class="info-row"><span class="lbl">Mouth</span><span class="coords" id="ip-mouth">—</span></div>
+      <div class="info-row"><span class="lbl">Camera</span><span class="coords" id="ip-cam">—</span></div>
+      <div class="info-row"><span class="lbl">Zoom</span><span class="coords" id="ip-zoom">—</span></div>
+    </div>
     <div id="featureCards"></div>
     <button class="reset" onclick="resetAll()">Reset All Offsets</button>
   </div>
 
   <div id="adjustmentCards"></div>
-
-  <div id="landmarkCard">
-    <div class="lc-title">Landmarks</div>
-    <label class="row-check"><input type="checkbox" id="chkLandmarks" checked> Show landmarks</label>
-    <div id="lmHint" style="margin-top:4px">19 anatomical points auto-mapped to nearest mesh vertex.</div>
-  </div>
 
   <div id="status">Loading model…</div>
 </div>
@@ -153,8 +153,8 @@ let orthoCam = makeOrtho();
 orthoCam.position.copy(perspCam.position);
 orthoCam.lookAt(0,0,0);
 
-let camera = perspCam;
-let isOrtho = false;
+let camera = orthoCam;
+let isOrtho = true;
 
 // Saved home position (set after GLB loads)
 let homePos = new THREE.Vector3(0,.2,4.5);
@@ -204,7 +204,7 @@ const d3 = new THREE.DirectionalLight(0xffffff,.3); d3.position.set(0,-2,1); sce
 
 function resize(){
   const w=vp.clientWidth,h=vp.clientHeight;
-  renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w,h); perspCam.aspect=w/h; perspCam.updateProjectionMatrix(); if(!isOrtho){ camera.updateProjectionMatrix(); }
 }
 window.addEventListener('resize',resize); resize();
 
@@ -231,6 +231,11 @@ function fmtVec(x,y,z){ return `${fmt(x)}, ${fmt(y)}, ${fmt(z)}`; }
 function updateInfoPanel(){
   const hp = headGroup.position;
   document.getElementById('ip-head').textContent = fmtVec(hp.x, hp.y, hp.z);
+
+  const cp = camera.position;
+  document.getElementById('ip-cam').textContent = fmtVec(cp.x, cp.y, cp.z);
+  const zoom = isOrtho ? camera.zoom.toFixed(3) : camera.position.distanceTo(ctrl.target).toFixed(2);
+  document.getElementById('ip-zoom').textContent = isOrtho ? zoom : zoom + ' (dist)';
 
   const feat = {
     eyes:  document.getElementById('ip-eyes'),
@@ -330,11 +335,46 @@ function getArteryInputs(){
 }
 
 function updateArteryLandmarks(){
-  if(!headMesh || !arteryLmGroup.visible) return;
+  if(!headMesh) return;
   const {lm9, lm10, lm1, lm2, v} = getArteryInputs();
   ARTERY_POINTS.forEach((ap, i)=>{
     const [x, y, z] = ap.formula(lm9, lm10, lm1, lm2, v);
     arteryLmGroup.children[i]?.position.set(x, y, z);
+  });
+  updateDNATubes();
+}
+
+// ── DNA tubes ────────────────────────────────────────────────────────────
+const dnaGroup = new THREE.Group();
+dnaGroup.renderOrder = 999;
+headGroup.add(dnaGroup);
+
+const DNA_PATHS = [
+  ['A','B','C'],
+  ['B','D',"B'"],
+  ["A'","B'","C'"],
+];
+
+function getArteryPos(id){
+  const i = ARTERY_POINTS.findIndex(p=>p.id===id);
+  return arteryLmGroup.children[i]?.position ?? new THREE.Vector3();
+}
+
+function updateDNATubes(){
+  // clear old tubes
+  dnaGroup.children.forEach(c=>c.geometry?.dispose());
+  dnaGroup.clear();
+
+  const radius = parseFloat(document.getElementById('adj_1')?.value || 0.68) / 2;
+
+  DNA_PATHS.forEach(ids=>{
+    const pts = ids.map(id=>getArteryPos(id).clone());
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const geo = new THREE.TubeGeometry(curve, 32, radius, 8, false);
+    const mat = new THREE.MeshPhongMaterial({color:0xff4444, transparent:true, opacity:0.85, depthTest:false});
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 999;
+    dnaGroup.add(mesh);
   });
 }
 
@@ -362,9 +402,10 @@ window.addEventListener('resize',()=>{
   }
 });
 
-// ── Origin marker ─────────────────────────────────────────────────────
+// ── Origin marker (hidden) ────────────────────────────────────────────
 (function addOriginMarker(){
   const group = new THREE.Group();
+  group.visible = false;
 
   // Axes lines
   const axisLen = 0.3;
@@ -904,8 +945,12 @@ function placeLandmarks(){
 
 document.getElementById('chkLandmarks').addEventListener('change', e=>{
   lmMarkerGroup.visible = e.target.checked;
+  arteryLmGroup.visible = e.target.checked;
   if(!e.target.checked) document.getElementById('lmTooltip').style.display='none';
 });
+// apply initial state (unchecked by default)
+lmMarkerGroup.visible = false;
+arteryLmGroup.visible = false;
 
 // ── Landmark click → live position panel ─────────────────────────────
 const lmTooltip = document.getElementById('lmTooltip');
@@ -1029,7 +1074,7 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   headMesh.matrixWorld.identity();
 
   headMesh.material=new THREE.MeshStandardMaterial({
-    color:0xd4a574, roughness:0.65, metalness:0.0, transparent:true, opacity:0.1, side:THREE.DoubleSide
+    color:0xd4a574, roughness:0.65, metalness:0.0, transparent:true, opacity:1.0, side:THREE.DoubleSide
   });
   headGroup.add(headMesh);
 
@@ -1062,9 +1107,10 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   const localCtr=new THREE.Vector3(); bb.getCenter(localCtr);
   const sz=new THREE.Vector3(); bb.getSize(sz);
   const worldCtr = localCtr.clone().add(headGroup.position);
-  const dist=sz.length()*1.1;
+  const dist=sz.length()*0.825;
   camera.position.set(worldCtr.x, worldCtr.y+sz.y*0.05, worldCtr.z+dist);
   ctrl.target.copy(worldCtr); ctrl.update();
+  camera.zoom = 4.4; camera.updateProjectionMatrix();
   homePos.copy(camera.position);
   homeTarget.copy(ctrl.target);
 
