@@ -20,6 +20,7 @@ h1{font-size:14px;color:#c97;text-align:center;padding-bottom:8px;border-bottom:
 .adj-label .adj-header{display:flex;align-items:baseline;justify-content:space-between;gap:4px}
 .adj-label .adj-name{font-size:12px;color:#99a;line-height:1.3;flex:1}
 .adj-label .adj-row{display:flex;align-items:center;gap:4px}
+.adj-range{font-size:9px;color:#445;white-space:nowrap;flex-shrink:0}
 .adj-static{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;color:#556;padding:2px 0}
 .adj-static .adj-name{flex:1;color:#667}
 .adj-static .adj-badge{font-size:10px;color:#445;border:1px solid #2a2a50;border-radius:3px;padding:1px 5px}
@@ -92,7 +93,7 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
   </div>
 </div>
 <div id="sidebar">
-  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.1.0</span></h1>
+  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.4.0</span></h1>
 
   <div id="globalCard">
     <div class="card-title">Display</div>
@@ -208,10 +209,10 @@ function resize(){
 window.addEventListener('resize',resize); resize();
 
 // ── Head group (wraps mesh + points so they move together) ───────────
-const MODEL_SCALE = 188.4 * 0.57;
+const MODEL_SCALE = 188.4 * 0.57 * 0.73605;
 
 const headGroup = new THREE.Group();
-headGroup.position.set(0, 81.51, -110.01);
+headGroup.position.set(0, 81.51*0.73605, -110.01*0.73605);
 scene.add(headGroup);
 
 // ── Raycaster / mouse ────────────────────────────────────────────────
@@ -244,13 +245,91 @@ function updateInfoPanel(){
   }
 }
 
+// Landmark child indices (0-based) that must stay on the midline (x=0)
+const MIDLINE_LM_INDICES = new Set([8,9,10,11,14,15,16]); // labels 9,10,11,12,15,16,17
+
 function updateLandmarkPositions(){
   if(!headMesh || !lmMarkerGroup.visible) return;
   const pos = headMesh.geometry.attributes.position;
-  lmMarkerGroup.children.forEach(marker=>{
+  lmMarkerGroup.children.forEach((marker, i)=>{
     const vi = marker.userData.vertexIdx;
     if(vi === undefined) return;
-    marker.position.set(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+    const x = MIDLINE_LM_INDICES.has(i) ? 0 : pos.getX(vi);
+    marker.position.set(x, pos.getY(vi), pos.getZ(vi));
+  });
+}
+
+// ── Artery landmarks ─────────────────────────────────────────────────
+const arteryLmGroup = new THREE.Group();
+headGroup.add(arteryLmGroup);
+
+// lmMarkerGroup children indices are 0-based: lm1=0, lm2=1, lm9=8, lm10=9
+const ARTERY_POINTS = [
+  { id:'A',   formula:(lm9,lm10,lm2,v)=>[ lm9.x  - v[6]  - v[1],              lm9.y,              lm9.z  ] },
+  { id:'B',   formula:(lm9,lm10,lm2,v)=>[ lm10.x - v[2]  - v[1],              lm10.y,             lm10.z ] },
+  { id:'C',   formula:(lm9,lm10,lm2,v)=>[ lm10.x - v[2]  - v[1],              lm9.y  - v[8],      lm10.z ] },
+  { id:'D',   formula:(lm9,lm10,lm2,v)=>[ lm10.x,                             lm10.y,             lm10.z ] },
+  { id:'LM2', formula:(lm9,lm10,lm2,v)=>[ lm9.x  - v[5]  - v[1]  - v[4],     lm2.y,              lm2.z  ] },
+];
+
+function makeArteryMarker(id, arteryIdx){
+  const g = new THREE.Group();
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(2, 10, 7),
+    new THREE.MeshBasicMaterial({color:0xff4444, depthTest:false})
+  );
+  sphere.userData.arteryIdx = arteryIdx;
+  g.add(sphere);
+  const canvas = document.createElement('canvas');
+  canvas.width = 80; canvas.height = 40;
+  const ctx2 = canvas.getContext('2d');
+  ctx2.font = 'bold 22px sans-serif';
+  ctx2.fillStyle = '#ff6666';
+  ctx2.fillText(id, 3, 30);
+  const tex = new THREE.CanvasTexture(canvas);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, depthTest:false, transparent:true}));
+  spr.scale.set(10, 5, 1);
+  spr.position.set(6, 2.6, 0);
+  g.add(spr);
+  g.renderOrder = 1001;
+  g.userData.arteryId = id;
+  return g;
+}
+
+function placeArteryLandmarks(){
+  arteryLmGroup.clear();
+  ARTERY_POINTS.forEach((ap, i)=>{
+    const m = makeArteryMarker(ap.id, i);
+    arteryLmGroup.add(m);
+  });
+  updateArteryLandmarks();
+}
+
+function getArteryInputs(){
+  const pos = headMesh.geometry.attributes.position;
+  function lmLocal(childIdx){
+    const vi = lmMarkerGroup.children[childIdx]?.userData.vertexIdx;
+    if(vi == null) return {x:0,y:0,z:0};
+    const x = MIDLINE_LM_INDICES.has(childIdx) ? 0 : pos.getX(vi);
+    return {x, y:pos.getY(vi), z:pos.getZ(vi)};
+  }
+  const lm9  = lmLocal(8);
+  const lm10 = lmLocal(9);
+  const lm2  = lmLocal(1);
+  // v[adj] = current slider value for that adj ID
+  const v = {};
+  [1,2,4,5,6,8].forEach(id=>{
+    v[id] = parseFloat(document.getElementById(`adj_${id}`)?.value || 0);
+  });
+  return {lm9, lm10, lm2, v};
+}
+
+function updateArteryLandmarks(){
+  if(!headMesh || !arteryLmGroup.visible) return;
+  const {lm9, lm10, lm2, v} = getArteryInputs();
+  ARTERY_POINTS.forEach((ap, i)=>{
+    const [x, y, z] = ap.formula(lm9, lm10, lm2, v);
+    arteryLmGroup.children[i]?.position.set(x, y, z);
   });
 }
 
@@ -258,6 +337,7 @@ function loop(){
   requestAnimationFrame(loop);
   ctrl.update();
   updateLandmarkPositions();
+  updateArteryLandmarks();
   updateActiveLmTooltip();
   renderer.render(scene,camera);
   updateInfoPanel();
@@ -352,7 +432,7 @@ window.addEventListener('resize',()=>{
 // X:[-0.957,0.957], Y:[-1.737,1.385], Z:[-0.932,1.297]
 const S = MODEL_SCALE;
 const FEATURES = [
-  {id:'eyes', label:'Eyes', color:'#ff9f6b', center:[24.9, 32.6, 99.9], radius:34.4, symmetric:true, falloff:2},
+  {id:'eyes', label:'Eyes', color:'#ff9f6b', center:[25.9, 26.3, 71.6], radius:31.0, symmetric:true, falloff:1.6},
   {id:'nose',  label:'Nose',  color:'#6bffaa', center:[0.00,   0.02*S, 1.08*S], radius:0.38*S, noX:true, falloff:2},
   {id:'mouth', label:'Mouth', color:'#ffd56b', center:[0.00,  -0.21*S, 1.05*S], radius:0.40*S, noX:true, falloff:2},
 ];
@@ -377,7 +457,7 @@ FEATURES.forEach(feat=>{
   const card = document.createElement('div');
   card.className='card'; card.style.setProperty('--ac',feat.color);
   const axLabels = feat.symmetric ? {x:'LM1/2 X',y:'Y',z:'Z'} : {x:'X',y:'Y',z:'Z'};
-  const rcXLabel = feat.symmetric ? 'Half-X' : 'X';
+  const rcXLabel = feat.symmetric ? 'Center X' : 'X';
   const activeAxes = feat.noX ? ['y','z'] : ['x','y','z'];
   card.innerHTML=`
     <div class="card-head">
@@ -401,28 +481,28 @@ FEATURES.forEach(feat=>{
     </div>
     <div class="region-divider">
       <div class="slider-group">
-        <label><span>Falloff</span>
-          <input type="range" id="${feat.id}_falloff" min="0.2" max="8" step="0.1" value="${feat.falloff}" data-default="${feat.falloff}">
+        <label title="How sharply the deformation fades at the region boundary. Low = gradual blend, high = hard cutoff."><span>Edge sharpness</span>
+          <input type="range" id="${feat.id}_falloff" min="1.6" max="2.4" step="0.01" value="${feat.falloff}" data-default="${feat.falloff}">
           <span class="val" id="${feat.id}_falloff_v">${feat.falloff.toFixed(1)}</span>
           <button class="sl-reset" onclick="resetSlider('${feat.id}_falloff')">↺</button>
         </label>
-        <label><span>Radius</span>
-          <input type="range" id="rc_${feat.id}_r" min="5" max="120" step="0.1" value="${feat.radius.toFixed(1)}" data-default="${feat.radius.toFixed(1)}">
+        <label title="Sphere size in mm — vertices inside get deformed, outside don't."><span>Region radius</span>
+          <input type="range" id="rc_${feat.id}_r" min="19.6" max="31.0" step="0.01" value="${feat.radius.toFixed(1)}" data-default="${feat.radius.toFixed(1)}">
           <span class="val" id="rc_${feat.id}_r_v">${feat.radius.toFixed(1)}</span>
           <button class="sl-reset" onclick="resetSlider('rc_${feat.id}_r')">↺</button>
         </label>
         ${feat.symmetric ? `<label><span>${rcXLabel}</span>
-          <input type="range" id="rc_${feat.id}_x" min="0" max="80" step="0.1" value="${feat.center[0].toFixed(1)}" data-default="${feat.center[0].toFixed(1)}">
+          <input type="range" id="rc_${feat.id}_x" min="0" max="50" step="0.1" value="${feat.center[0].toFixed(1)}" data-default="${feat.center[0].toFixed(1)}">
           <span class="val" id="rc_${feat.id}_x_v">${feat.center[0].toFixed(1)}</span>
           <button class="sl-reset" onclick="resetSlider('rc_${feat.id}_x')">↺</button>
         </label>` : ''}
         <label><span>Center Y</span>
-          <input type="range" id="rc_${feat.id}_y" min="-80" max="80" step="0.1" value="${feat.center[1].toFixed(1)}" data-default="${feat.center[1].toFixed(1)}">
+          <input type="range" id="rc_${feat.id}_y" min="0" max="50" step="0.1" value="${feat.center[1].toFixed(1)}" data-default="${feat.center[1].toFixed(1)}">
           <span class="val" id="rc_${feat.id}_y_v">${feat.center[1].toFixed(1)}</span>
           <button class="sl-reset" onclick="resetSlider('rc_${feat.id}_y')">↺</button>
         </label>
         <label><span>Center Z</span>
-          <input type="range" id="rc_${feat.id}_z" min="50" max="180" step="0.1" value="${feat.center[2].toFixed(1)}" data-default="${feat.center[2].toFixed(1)}">
+          <input type="range" id="rc_${feat.id}_z" min="40" max="120" step="0.1" value="${feat.center[2].toFixed(1)}" data-default="${feat.center[2].toFixed(1)}">
           <span class="val" id="rc_${feat.id}_z_v">${feat.center[2].toFixed(1)}</span>
           <button class="sl-reset" onclick="resetSlider('rc_${feat.id}_z')">↺</button>
         </label>
@@ -491,26 +571,29 @@ FEATURES.forEach(feat=>{
 
 // ── Adjustment sliders ───────────────────────────────────────────────
 const ADJUSTMENTS = [
-  {adj:1,  artery:'DNA', name:'DNA branch (right)',         desc:'Branch position right of facial midline (upper nose)',           val:3.2,  margin:1.5},
-  {adj:2,  artery:'DNA', name:'DNA branch (left)',          desc:'Branch position left of facial midline (upper nose)',            val:3.1,  margin:1.5},
-  {adj:3,  artery:'DNA', name:'Intercanthal line',          desc:'Measurement at the intercanthal line level',                    val:7.2,  margin:0.3},
-  {adj:4,  artery:'DNA', name:'Subcanthal segment',         desc:'Vertical segment below intercanthal line to bifurcation',       val:8.5,  margin:3.5},
-  {adj:5,  artery:'DNA', name:'Nasal segment (female)',     desc:'Vertical nasal segment, female',                                val:5.6,  margin:1.7},
-  {adj:6,  artery:'DNA', name:'Nasal segment (male)',       desc:'Vertical nasal segment, male',                                  val:7.95, margin:3.5},
-  {adj:7,  artery:'DNA', name:'DNA-L',                      desc:'Lateral branch extent down the nose',                           val:7.4,  margin:6.4},
-  {adj:8,  artery:'DNA', name:'DNA-D caliber',              desc:'Dorsal nasal artery measurement along the dorsum',              val:2,    margin:0.1},
-  {adj:9,  artery:'DNA', name:'Lateral deviation',          desc:'Lateral deviation of artery from midline (cartilaginous nose)', val:4.8,  margin:0.4},
-  {adj:10, artery:'LNA', name:'LNA-L',                      desc:'Length along upper lateral nose',                               val:10.6, margin:4.5},
-  {adj:11, artery:'LNA', name:'LNA-W overall',              desc:'Overall caliber',                                               val:1.23, margin:0.37},
-  {adj:12, artery:'LNA', name:'LNA-W right',                desc:'Caliber, right',                                                val:1.55, margin:0.15},
-  {adj:13, artery:'LNA', name:'LNA-W left',                 desc:'Caliber, left',                                                 val:1.43, margin:0.17},
-  {adj:14, artery:'LNA', name:'LNA-D',                      desc:'Depth at nasolabial fold, before branching',                   val:1.08, margin:0.23},
-  {adj:15, artery:'LNA', name:'From alar base',             desc:'Distance from alar base',                                      val:1.15, margin:1.25},
-  {adj:16, artery:'LNA', name:'LNA-L from oral commissure', desc:'Length from oral commissure',                                  val:10,   margin:6.8},
-  {adj:17, artery:'SLA', name:'SLA-W at midline',           desc:'Caliber at the midline',                                       val:1.1,  margin:0.2},
-  {adj:18, artery:'SLA', name:'SLA-W overall',              desc:'Overall caliber (segmental tapering)',                          val:1.36, margin:0.28},
-  {adj:19, artery:'SLA', name:'SLA-W at commissure',        desc:'Caliber at the labial commissure',                             val:1.65, margin:0.28},
-  {adj:20, artery:'SLA', name:'SLA-L',                      desc:'Length',                                                       val:21,   margin:9.8},
+  {adj:1,  artery:'DNA', name:'Diameter',                   desc:'Diameter of the artery itself',                                val:0.68, margin:0},
+  {adj:2,  artery:'DNA', name:'DNA branch (right)',         desc:'Branch position right of facial midline (upper nose)',           val:3.2,  margin:1.5},
+  {adj:3,  artery:'DNA', name:'DNA branch (left)',          desc:'Branch position left of facial midline (upper nose)',            val:3.1,  margin:1.5},
+  {adj:4,  artery:'DNA', name:'Intercanthal line',          desc:'Measurement at the intercanthal line level',                    val:7.2,  margin:0.3},
+  {adj:5,  artery:'DNA', name:'Subcanthal segment',         desc:'Vertical segment below intercanthal line to bifurcation',       val:8.5,  margin:3.5},
+  {adj:6,  artery:'DNA', name:'Nasal segment (female)',     desc:'Vertical nasal segment, female',                                val:5.6,  margin:1.7},
+  {adj:7,  artery:'DNA', name:'Nasal segment (male)',       desc:'Vertical nasal segment, male',                                  val:7.95, margin:3.5},
+  {adj:8,  artery:'DNA', name:'DNA-L',                      desc:'Lateral branch extent down the nose',                           val:7.4,  margin:6.4},
+  {adj:9,  artery:'DNA', name:'DNA-D caliber',              desc:'Dorsal nasal artery measurement along the dorsum',              val:2,    margin:0.1},
+  {adj:10, artery:'DNA', name:'Lateral deviation',          desc:'Lateral deviation of artery from midline (cartilaginous nose)', val:4.8,  margin:0.4},
+  {adj:21, artery:'LNA', name:'Diameter',                   desc:'Diameter of the artery itself',                                val:0.68, margin:0},
+  {adj:22, artery:'LNA', name:'LNA-L',                      desc:'Length along upper lateral nose',                               val:10.6, margin:4.5},
+  {adj:23, artery:'LNA', name:'LNA-W overall',              desc:'Overall caliber',                                               val:1.23, margin:0.37},
+  {adj:24, artery:'LNA', name:'LNA-W right',                desc:'Caliber, right',                                                val:1.55, margin:0.15},
+  {adj:25, artery:'LNA', name:'LNA-W left',                 desc:'Caliber, left',                                                 val:1.43, margin:0.17},
+  {adj:26, artery:'LNA', name:'LNA-D',                      desc:'Depth at nasolabial fold, before branching',                   val:1.08, margin:0.23},
+  {adj:27, artery:'LNA', name:'From alar base',             desc:'Distance from alar base',                                      val:1.15, margin:1.15},
+  {adj:28, artery:'LNA', name:'LNA-L from oral commissure', desc:'Length from oral commissure',                                  val:10,   margin:6.8},
+  {adj:31, artery:'SLA', name:'Diameter',                   desc:'Diameter of the artery itself',                                val:0.68, margin:0},
+  {adj:32, artery:'SLA', name:'SLA-W at midline',           desc:'Caliber at the midline',                                       val:1.1,  margin:0.2},
+  {adj:33, artery:'SLA', name:'SLA-W overall',              desc:'Overall caliber (segmental tapering)',                          val:1.36, margin:0.28},
+  {adj:34, artery:'SLA', name:'SLA-W at commissure',        desc:'Caliber at the labial commissure',                             val:1.65, margin:0.28},
+  {adj:35, artery:'SLA', name:'SLA-L',                      desc:'Length',                                                       val:21,   margin:9.8},
 ];
 
 const ARTERY_COLORS = {DNA:'#6bb8ff', LNA:'#ff9f6b', SLA:'#6bffaa'};
@@ -539,7 +622,9 @@ arteriesInOrder.forEach(artery=>{
         <button class="sl-reset" onclick="resetSlider('adj_${a.adj}')">↺</button>
       </div>
       <div class="adj-row">
+        <span class="adj-range">${parseFloat(mn).toFixed(2)}</span>
         <input type="range" id="adj_${a.adj}" min="${mn}" max="${mx}" step="${step}" value="${def}" data-default="${def}">
+        <span class="adj-range">${parseFloat(mx).toFixed(2)}</span>
       </div>
     </label>`;
   }).join('');
@@ -557,6 +642,8 @@ arteriesInOrder.forEach(artery=>{
 
 // ── Model state ───────────────────────────────────────────────────────
 let lm1Vi=null, lm1OrigX=0, lm1Weight=1;
+let lm2Vi=null, lm2OrigX=0, lm2Weight=1;
+let lm9Vi=null;
 let headMesh=null, origPos=null;
 window._getHeadMesh = ()=>headMesh;
 window._THREE = THREE;
@@ -713,25 +800,25 @@ window.resetAll=function(){
 // Eye Z raised to eyelid surface (~0.92-0.96); mouth corner Z raised to lip surface (~1.06).
 // local: [X, Y, Z] — headGroup local space, nearest front-face vertex (local Z>50) by world XY
 const LANDMARKS = [
-  {label:'1',  name:'Endocanthion (inner), subj-left',          world:[ 21.3317,  35.7603,  97.2090]},
-  {label:'2',  name:'Endocanthion (inner), subj-right',         world:[-21.3317,  35.7603,  97.2090]},
-  {label:'3',  name:'Exocanthion (outer), subj-left',           world:[ 50.9219,  36.7634,  90.6533]},
-  {label:'4',  name:'Exocanthion (outer), subj-right',          world:[-50.9219,  36.7634,  90.6533]},
-  {label:'5',  name:'Palpebrale superius, subj-left',           world:[ 35.8598,  39.4845,  99.7420]},
-  {label:'6',  name:'Palpebrale superius, subj-right',          world:[-35.8598,  39.4845,  99.7420]},
-  {label:'7',  name:'Palpebrale inferius, subj-left',           world:[ 36.1938,  33.7601,  99.3386]},
-  {label:'8',  name:'Palpebrale inferius, subj-right',          world:[-36.1938,  33.7601,  99.3386]},
-  {label:'9',  name:'Nasion',                                    world:[  0.0000,  39.5520, 115.3844]},
-  {label:'10', name:'Midendocanthion',                           world:[  0.0000,  35.8044, 117.1646]},
-  {label:'11', name:'Nasal bridge / pronasale',                  world:[  0.0000,   0.2891, 139.0026]},
-  {label:'12', name:'Subnasale',                                 world:[  0.0000, -12.5263, 123.1505]},
-  {label:'13', name:'Alare, subj-left',                          world:[ 14.8033,  -5.2705, 121.0659]},
-  {label:'14', name:'Alare, subj-right',                         world:[-14.8033,  -5.2705, 121.0659]},
-  {label:'15', name:'Labiale superius',                          world:[  0.0000, -32.8310, 119.7531]},
-  {label:'16', name:'Labiale inferius',                          world:[  0.0000, -41.6374, 120.9825]},
-  {label:'17', name:'Pogonion (chin)',                           world:[  0.0000, -72.5562, 114.4136]},
-  {label:'18', name:'Cheilion (mouth corner), subj-left',        world:[ 27.2766, -33.8252, 106.8387]},
-  {label:'19', name:'Cheilion (mouth corner), subj-right',       world:[-27.2766, -33.8252, 106.8387]},
+  {label:'1',  name:'Endocanthion (inner), subj-left',          world:[ 21.3317*0.73605,  35.7603*0.73605,  97.2090*0.73605]},
+  {label:'2',  name:'Endocanthion (inner), subj-right',         world:[-21.3317*0.73605,  35.7603*0.73605,  97.2090*0.73605]},
+  {label:'3',  name:'Exocanthion (outer), subj-left',           world:[ 50.9219*0.73605,  36.7634*0.73605,  90.6533*0.73605]},
+  {label:'4',  name:'Exocanthion (outer), subj-right',          world:[-50.9219*0.73605,  36.7634*0.73605,  90.6533*0.73605]},
+  {label:'5',  name:'Palpebrale superius, subj-left',           world:[ 35.8598*0.73605,  39.4845*0.73605,  99.7420*0.73605]},
+  {label:'6',  name:'Palpebrale superius, subj-right',          world:[-35.8598*0.73605,  39.4845*0.73605,  99.7420*0.73605]},
+  {label:'7',  name:'Palpebrale inferius, subj-left',           world:[ 36.1938*0.73605,  33.7601*0.73605,  99.3386*0.73605]},
+  {label:'8',  name:'Palpebrale inferius, subj-right',          world:[-36.1938*0.73605,  33.7601*0.73605,  99.3386*0.73605]},
+  {label:'9',  name:'Nasion',                                    world:[  0.0000,           39.5520*0.73605, 115.3844*0.73605]},
+  {label:'10', name:'Midendocanthion',                           world:[  0.0000,           35.8044*0.73605, 117.1646*0.73605]},
+  {label:'11', name:'Nasal bridge / pronasale',                  world:[  0.0000,            0.2891*0.73605, 139.0026*0.73605]},
+  {label:'12', name:'Subnasale',                                 world:[  0.0000,          -12.5263*0.73605, 123.1505*0.73605]},
+  {label:'13', name:'Alare, subj-left',                          world:[ 14.8033*0.73605,  -5.2705*0.73605, 121.0659*0.73605]},
+  {label:'14', name:'Alare, subj-right',                         world:[-14.8033*0.73605,  -5.2705*0.73605, 121.0659*0.73605]},
+  {label:'15', name:'Labiale superius',                          world:[  0.0000,          -32.8310*0.73605, 119.7531*0.73605]},
+  {label:'16', name:'Labiale inferius',                          world:[  0.0000,          -41.6374*0.73605, 120.9825*0.73605]},
+  {label:'17', name:'Pogonion (chin)',                           world:[  0.0000,          -72.5562*0.73605, 114.4136*0.73605]},
+  {label:'18', name:'Cheilion (mouth corner), subj-left',        world:[ 27.2766*0.73605, -33.8252*0.73605, 106.8387*0.73605]},
+  {label:'19', name:'Cheilion (mouth corner), subj-right',       world:[-27.2766*0.73605, -33.8252*0.73605, 106.8387*0.73605]},
 ];
 
 const lmMarkerGroup = new THREE.Group();
@@ -757,7 +844,7 @@ function nearestVertexIdx(pos, tx, ty, tz, midline=false){
 function makeLmMarker(label, name, lmIdx){
   const g = new THREE.Group();
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(3, 10, 7),
+    new THREE.SphereGeometry(2, 10, 7),
     new THREE.MeshBasicMaterial({color:0xa78bfa, depthTest:false})
   );
   sphere.userData.lmIdx = lmIdx;
@@ -819,56 +906,79 @@ document.getElementById('chkLandmarks').addEventListener('change', e=>{
 const lmTooltip = document.getElementById('lmTooltip');
 let activeLmTooltipIdx = null;
 let activeLmVertexIdx = null;
+let activeArteryIdx = null;
 
 renderer.domElement.addEventListener('click', e=>{
-  if(!headMesh || !lmMarkerGroup.visible) return;
+  if(!headMesh) return;
   getMouseNDC(e);
   raycaster.setFromCamera(_mouse, camera);
 
+  // collect purple + artery spheres
   const spheres = [];
-  lmMarkerGroup.children.forEach(g=> g.children.forEach(c=>{ if(c.isMesh) spheres.push(c); }));
+  if(lmMarkerGroup.visible)
+    lmMarkerGroup.children.forEach(g=> g.children.forEach(c=>{ if(c.isMesh) spheres.push(c); }));
+  arteryLmGroup.children.forEach(g=> g.children.forEach(c=>{ if(c.isMesh) spheres.push(c); }));
   const hits = raycaster.intersectObjects(spheres, false);
 
   if(!hits.length){
     lmTooltip.style.display='none';
-    activeLmTooltipIdx=null;
-    activeLmVertexIdx=null;
+    activeLmTooltipIdx=null; activeLmVertexIdx=null; activeArteryIdx=null;
     return;
   }
 
-  const idx = hits[0].object.userData.lmIdx;
-  if(idx === undefined) return;
-
-  if(activeLmTooltipIdx === idx){
-    lmTooltip.style.display='none';
-    activeLmTooltipIdx=null;
-    activeLmVertexIdx=null;
-    return;
-  }
-
-  activeLmTooltipIdx = idx;
-  activeLmVertexIdx = lmMarkerGroup.children[idx]?.userData.vertexIdx ?? null;
-
-  const lm = LANDMARKS[idx];
-  document.getElementById('lmtt-num').textContent = `#${lm.label}`;
-  document.getElementById('lmtt-name').textContent = lm.name;
-
+  const obj = hits[0].object;
   const rect = renderer.domElement.getBoundingClientRect();
   let tx = e.clientX - rect.left + 14;
   let ty = e.clientY - rect.top - 10;
-  lmTooltip.style.display='block';
   if(tx + 220 > rect.width) tx = e.clientX - rect.left - 230;
-  lmTooltip.style.left = tx+'px';
-  lmTooltip.style.top  = ty+'px';
+
+  if(obj.userData.arteryIdx !== undefined){
+    const ai = obj.userData.arteryIdx;
+    if(activeArteryIdx === ai){
+      lmTooltip.style.display='none';
+      activeArteryIdx=null; activeLmTooltipIdx=null; activeLmVertexIdx=null;
+      return;
+    }
+    activeArteryIdx = ai;
+    activeLmTooltipIdx = null; activeLmVertexIdx = null;
+    document.getElementById('lmtt-num').textContent = ARTERY_POINTS[ai].id;
+    document.getElementById('lmtt-name').textContent = 'Artery landmark';
+    lmTooltip.style.display='block';
+    lmTooltip.style.left = tx+'px'; lmTooltip.style.top = ty+'px';
+    return;
+  }
+
+  const idx = obj.userData.lmIdx;
+  if(idx === undefined) return;
+  if(activeLmTooltipIdx === idx){
+    lmTooltip.style.display='none';
+    activeLmTooltipIdx=null; activeLmVertexIdx=null; activeArteryIdx=null;
+    return;
+  }
+  activeArteryIdx = null;
+  activeLmTooltipIdx = idx;
+  activeLmVertexIdx = lmMarkerGroup.children[idx]?.userData.vertexIdx ?? null;
+  const lm = LANDMARKS[idx];
+  document.getElementById('lmtt-num').textContent = `#${lm.label}`;
+  document.getElementById('lmtt-name').textContent = lm.name;
+  lmTooltip.style.display='block';
+  lmTooltip.style.left = tx+'px'; lmTooltip.style.top = ty+'px';
 });
 
 function updateActiveLmTooltip(){
-  if(activeLmVertexIdx === null || !headMesh) return;
+  if(!headMesh) return;
+  const hp = headGroup.position;
+  if(activeArteryIdx !== null){
+    const p = arteryLmGroup.children[activeArteryIdx]?.position;
+    if(p) document.getElementById('lmtt-world').textContent =
+      `${(p.x+hp.x).toFixed(2)}, ${(p.y+hp.y).toFixed(2)}, ${(p.z+hp.z).toFixed(2)}`;
+    return;
+  }
+  if(activeLmVertexIdx === null) return;
   const pos = headMesh.geometry.attributes.position;
   const lx = pos.getX(activeLmVertexIdx);
   const ly = pos.getY(activeLmVertexIdx);
   const lz = pos.getZ(activeLmVertexIdx);
-  const hp = headGroup.position;
   document.getElementById('lmtt-world').textContent = `${(lx+hp.x).toFixed(2)}, ${(ly+hp.y).toFixed(2)}, ${(lz+hp.z).toFixed(2)}`;
 }
 
@@ -937,7 +1047,7 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   for(let i=0;i<n;i++){hp[i*3]=pos.getX(i);hp[i*3+1]=pos.getY(i);hp[i*3+2]=pos.getZ(i);}
   hg.setAttribute('position',new THREE.BufferAttribute(hp,3));
   hg.setAttribute('color',new THREE.BufferAttribute(hc,3));
-  pointsObj=new THREE.Points(hg,new THREE.PointsMaterial({size:2,vertexColors:true,transparent:true,opacity:.85,sizeAttenuation:true,depthTest:false}));
+  pointsObj=new THREE.Points(hg,new THREE.PointsMaterial({size:0.8,vertexColors:true,transparent:true,opacity:.85,sizeAttenuation:true,depthTest:false}));
   headGroup.add(pointsObj);
   rebuildPointColors();
 
@@ -954,6 +1064,7 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
   homeTarget.copy(ctrl.target);
 
   placeLandmarks();
+  placeArteryLandmarks();
   // Calibrate LM1/2 X slider to actual vertex position and weight
   lm1Vi = lmMarkerGroup.children[0]?.userData.vertexIdx ?? null;
   if(lm1Vi !== null){
@@ -965,6 +1076,31 @@ loader.parse(b64ToArrayBuffer(GLB_B64),'',(gltf)=>{
     sl.dataset.default = lm1OrigX.toFixed(2);
     document.getElementById('eyes_x_v').textContent = lm1OrigX.toFixed(2);
   }
+  // Calibrate LM2 (landmark index 1, negative-X endocanthion)
+  lm2Vi = lmMarkerGroup.children[1]?.userData.vertexIdx ?? null;
+  if(lm2Vi !== null){
+    lm2OrigX = origPos[lm2Vi * 3]; // negative value
+    lm2Weight = featureWeights.eyes[lm2Vi] || 1;
+  }
+  lm9Vi = lmMarkerGroup.children[8]?.userData.vertexIdx ?? null;
+
+  // Hook adj sliders that affect LM2 artery X to drive the eyes_x slider
+  function syncArteryLM2(){
+    if(lm9Vi === null) return;
+    const lm9x = origPos[lm9Vi * 3]; // midline ~0
+    const a1 = parseFloat(document.getElementById('adj_1')?.value || 0);
+    const a4 = parseFloat(document.getElementById('adj_4')?.value || 0);
+    const a5 = parseFloat(document.getElementById('adj_5')?.value || 0);
+    const lm2ArteryX = lm9x - a5 - a1 - a4; // LM2 artery X (negative)
+    // Pass the positive-side mirror to the eyes_x slider
+    const eyesX = -lm2ArteryX;
+    const sl = document.getElementById('eyes_x');
+    if(sl){ sl.value = eyesX.toFixed(2); sl.dispatchEvent(new Event('input')); }
+  }
+  ['adj_4','adj_5'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('input', syncArteryLM2);
+  });
+  syncArteryLM2();
   document.getElementById('status').textContent=`${n.toLocaleString()} vertices · 4 regions active`;
 },(xhr)=>{
   if(xhr.total) document.getElementById('status').textContent=`Loading ${Math.round(xhr.loaded/xhr.total*100)}%`;
