@@ -93,7 +93,7 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
   </div>
 </div>
 <div id="sidebar">
-  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.4.0</span></h1>
+  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.5.0</span></h1>
 
   <div id="globalCard">
     <div class="card-title">Display</div>
@@ -265,17 +265,21 @@ headGroup.add(arteryLmGroup);
 
 // lmMarkerGroup children indices are 0-based: lm1=0, lm2=1, lm9=8, lm10=9
 const ARTERY_POINTS = [
-  { id:'A',   formula:(lm9,lm10,lm2,v)=>[ lm9.x  - v[6]  - v[1],              lm9.y,              lm9.z  ] },
-  { id:'B',   formula:(lm9,lm10,lm2,v)=>[ lm10.x - v[2]  - v[1],              lm10.y,             lm10.z ] },
-  { id:'C',   formula:(lm9,lm10,lm2,v)=>[ lm10.x - v[2]  - v[1],              lm9.y  - v[8],      lm10.z ] },
-  { id:'D',   formula:(lm9,lm10,lm2,v)=>[ lm10.x,                             lm10.y,             lm10.z ] },
-  { id:'LM2', formula:(lm9,lm10,lm2,v)=>[ lm9.x  - v[5]  - v[1]  - v[4],     lm2.y,              lm2.z  ] },
+  { id:'A',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  - v[6]  - v[1]/2,              lm9.y,              lm9.z  ] },
+  { id:'B',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x - v[2]  - v[1]/2,              lm10.y,             lm10.z ] },
+  { id:'C',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x - v[2]  - v[1]/2,              lm9.y  - v[8],      lm10.z ] },
+  { id:'D',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x,                               lm10.y,             lm10.z ] },
+  { id:'LM2', formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  - v[5]  - v[1]/2 - v[4],      lm2.y,              lm2.z  ] },
+  { id:"A'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  + v[6]  + v[1]/2,              lm9.y,              lm9.z  ] },
+  { id:"B'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x + v[3]  + v[1]/2,              lm10.y,             lm10.z ] },
+  { id:"C'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x + v[3]  + v[1]/2,              lm9.y  - v[8],      lm10.z ] },
+  { id:'LM1', formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  + v[5]  + v[1]/2 + v[4],      lm1.y,              lm1.z  ] },
 ];
 
 function makeArteryMarker(id, arteryIdx){
   const g = new THREE.Group();
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(2, 10, 7),
+    new THREE.SphereGeometry(0.4, 10, 7),
     new THREE.MeshBasicMaterial({color:0xff4444, depthTest:false})
   );
   sphere.userData.arteryIdx = arteryIdx;
@@ -315,20 +319,21 @@ function getArteryInputs(){
   }
   const lm9  = lmLocal(8);
   const lm10 = lmLocal(9);
+  const lm1  = lmLocal(0);
   const lm2  = lmLocal(1);
   // v[adj] = current slider value for that adj ID
   const v = {};
-  [1,2,4,5,6,8].forEach(id=>{
+  [1,2,3,4,5,6,8].forEach(id=>{
     v[id] = parseFloat(document.getElementById(`adj_${id}`)?.value || 0);
   });
-  return {lm9, lm10, lm2, v};
+  return {lm9, lm10, lm1, lm2, v};
 }
 
 function updateArteryLandmarks(){
   if(!headMesh || !arteryLmGroup.visible) return;
-  const {lm9, lm10, lm2, v} = getArteryInputs();
+  const {lm9, lm10, lm1, lm2, v} = getArteryInputs();
   ARTERY_POINTS.forEach((ap, i)=>{
-    const [x, y, z] = ap.formula(lm9, lm10, lm2, v);
+    const [x, y, z] = ap.formula(lm9, lm10, lm1, lm2, v);
     arteryLmGroup.children[i]?.position.set(x, y, z);
   });
 }
@@ -844,7 +849,7 @@ function nearestVertexIdx(pos, tx, ty, tz, midline=false){
 function makeLmMarker(label, name, lmIdx){
   const g = new THREE.Group();
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(2, 10, 7),
+    new THREE.SphereGeometry(0.4, 10, 7),
     new THREE.MeshBasicMaterial({color:0xa78bfa, depthTest:false})
   );
   sphere.userData.lmIdx = lmIdx;
