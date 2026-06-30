@@ -86,7 +86,7 @@ button.reset:hover{background:#c97;color:#111;border-color:#c97}
   </div>
 </div>
 <div id="sidebar">
-  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.6.0</span></h1>
+  <h1>3D Facial Artery Visualizer <span style="font-size:9px;color:#667;font-weight:400;letter-spacing:0">v1.7.0</span></h1>
 
   <button class="adv-toggle" id="advToggle" onclick="document.getElementById('advBody').classList.toggle('open');this.querySelector('.adv-arrow').textContent=document.getElementById('advBody').classList.contains('open')?'▲':'▼'">
     Advanced Controls <span class="adv-arrow">▼</span>
@@ -270,22 +270,27 @@ headGroup.add(arteryLmGroup);
 
 // lmMarkerGroup children indices are 0-based: lm1=0, lm2=1, lm9=8, lm10=9
 const ARTERY_POINTS = [
-  { id:'A',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  - v[6]  - v[1]/2,              lm9.y,              lm9.z  ] },
-  { id:'B',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x - v[2]  - v[1]/2,              lm10.y,             lm10.z ] },
-  { id:'C',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x - v[2]  - v[1]/2,              lm9.y  - v[8],      lm10.z ] },
-  { id:'D',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x,                               lm10.y,             lm10.z ] },
-  { id:'LM2', formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  - v[5]  - v[1]/2 - v[4],      lm2.y,              lm2.z  ] },
-  { id:"A'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  + v[6]  + v[1]/2,              lm9.y,              lm9.z  ] },
-  { id:"B'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x + v[3]  + v[1]/2,              lm10.y,             lm10.z ] },
-  { id:"C'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x + v[3]  + v[1]/2,              lm9.y  - v[8],      lm10.z ] },
-  { id:'LM1', formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  + v[5]  + v[1]/2 + v[4],      lm1.y,              lm1.z  ] },
+  { id:'A',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  - v[6]  - v[1]/2,              lm9.y,              lm9.z  - v[13] ] },
+  { id:'B',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x - v[2]  - v[1]/2,              lm10.y,             lm10.z - v[13] ] },
+  { id:'C',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x - v[2]  - v[1]/2,              lm9.y  - v[8],      lm10.z - v[13] ] },
+  { id:'D',   formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x,                               lm10.y,             lm10.z - v[9]  ] },
+  { id:'LM2', formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  - v[5]  - v[1]/2 - v[4],      lm2.y,              lm2.z          ] },
+  { id:"A'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  + v[6]  + v[1]/2,              lm9.y,              lm9.z  - v[15] ] },
+  { id:"B'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x + v[3]  + v[1]/2,              lm10.y,             lm10.z - v[15] ] },
+  { id:"C'",  formula:(lm9,lm10,lm1,lm2,v)=>[ lm10.x + v[3]  + v[1]/2,              lm9.y  - v[8],      lm10.z - v[15] ] },
+  { id:'LM1', formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  + v[5]  + v[1]/2 + v[4],      lm1.y,              lm1.z          ] },
+  { id:'Ar',  formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  - v[6]  - v[1]/2,              lm9.y,              lm9.z          ] },
+  { id:"A'r", formula:(lm9,lm10,lm1,lm2,v)=>[ lm9.x  + v[6]  + v[1]/2,              lm9.y,              lm9.z          ] },
 ];
 
 function makeArteryMarker(id, arteryIdx){
+  const isRaycast = id === 'Ar' || id === "A'r";
+  const color = isRaycast ? 0x4488ff : 0xff4444;
+  const labelColor = isRaycast ? '#88aaff' : '#ff6666';
   const g = new THREE.Group();
   const sphere = new THREE.Mesh(
     new THREE.SphereGeometry(0.4, 10, 7),
-    new THREE.MeshBasicMaterial({color:0xff4444, depthTest:false})
+    new THREE.MeshBasicMaterial({color, depthTest:false})
   );
   sphere.userData.arteryIdx = arteryIdx;
   g.add(sphere);
@@ -293,7 +298,7 @@ function makeArteryMarker(id, arteryIdx){
   canvas.width = 80; canvas.height = 40;
   const ctx2 = canvas.getContext('2d');
   ctx2.font = 'bold 22px sans-serif';
-  ctx2.fillStyle = '#ff6666';
+  ctx2.fillStyle = labelColor;
   ctx2.fillText(id, 3, 30);
   const tex = new THREE.CanvasTexture(canvas);
   const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, depthTest:false, transparent:true}));
@@ -326,19 +331,38 @@ function getArteryInputs(){
   const lm10 = lmLocal(9);
   const lm1  = lmLocal(0);
   const lm2  = lmLocal(1);
-  // v[adj] = current slider value for that adj ID
+  // v[adj] = slider value, or fixed val for margin=0 entries
   const v = {};
-  [1,2,3,4,5,6,8].forEach(id=>{
-    v[id] = parseFloat(document.getElementById(`adj_${id}`)?.value || 0);
+  [1,2,3,4,5,6,8,9,13,15].forEach(id=>{
+    const el = document.getElementById(`adj_${id}`);
+    if(el){
+      v[id] = parseFloat(el.value);
+    } else {
+      const adj = ADJUSTMENTS.find(a=>a.adj===id);
+      v[id] = adj ? adj.val : 0;
+    }
   });
   return {lm9, lm10, lm1, lm2, v};
+}
+
+const _surfaceRaycaster = new THREE.Raycaster();
+function getMeshSurfaceZ(localX, localY){
+  _surfaceRaycaster.set(new THREE.Vector3(localX, localY, 9999), new THREE.Vector3(0, 0, -1));
+  const hits = _surfaceRaycaster.intersectObject(headMesh, false);
+  if(!hits.length) return null;
+  // headMesh.matrixWorld = identity, so hit.point is in vertex local space
+  return Math.max(...hits.map(h => h.point.z));
 }
 
 function updateArteryLandmarks(){
   if(!headMesh) return;
   const {lm9, lm10, lm1, lm2, v} = getArteryInputs();
   ARTERY_POINTS.forEach((ap, i)=>{
-    const [x, y, z] = ap.formula(lm9, lm10, lm1, lm2, v);
+    let [x, y, z] = ap.formula(lm9, lm10, lm1, lm2, v);
+    if(ap.id === 'Ar' || ap.id === "A'r"){
+      const sz = getMeshSurfaceZ(x, y);
+      if(sz !== null) z = sz;
+    }
     arteryLmGroup.children[i]?.position.set(x, y, z);
   });
   updateDNATubes();
@@ -627,6 +651,11 @@ const ADJUSTMENTS = [
   {adj:8,  artery:'DNA', name:'DNA-L',                      desc:'Lateral branch extent down the nose',                           val:7.4,  margin:6.4},
   {adj:9,  artery:'DNA', name:'DNA-D caliber',              desc:'Dorsal nasal artery measurement along the dorsum',              val:2,    margin:0.1},
   {adj:10, artery:'DNA', name:'Lateral deviation',          desc:'Lateral deviation of artery from midline (cartilaginous nose)', val:4.8,  margin:0.4},
+  {adj:11, artery:'DNA', name:'DNA-D from periosteum (overall)', desc:'Overall artery depth from periosteum at bony dorsum',    val:1.2,  margin:0},
+  {adj:12, artery:'DNA', name:'DNA-D right to periosteum', desc:'Right-side artery depth to periosteum',                       val:1.64, margin:0},
+  {adj:13, artery:'DNA', name:'DNA-D right to skin',       desc:'Right-side artery depth to skin',                             val:2.62, margin:0},
+  {adj:14, artery:'DNA', name:'DNA-D left to periosteum',  desc:'Left-side artery depth to periosteum',                        val:1.48, margin:0},
+  {adj:15, artery:'DNA', name:'DNA-D left to skin',        desc:'Left-side artery depth to skin',                              val:2.52, margin:0},
   {adj:21, artery:'LNA', name:'Diameter',                   desc:'Diameter of the artery itself',                                val:0.68, margin:0},
   {adj:22, artery:'LNA', name:'LNA-L',                      desc:'Length along upper lateral nose',                               val:10.6, margin:4.5},
   {adj:23, artery:'LNA', name:'LNA-W overall',              desc:'Overall caliber',                                               val:1.23, margin:0.37},
@@ -640,6 +669,10 @@ const ADJUSTMENTS = [
   {adj:33, artery:'SLA', name:'SLA-W overall',              desc:'Overall caliber (segmental tapering)',                          val:1.36, margin:0.28},
   {adj:34, artery:'SLA', name:'SLA-W at commissure',        desc:'Caliber at the labial commissure',                             val:1.65, margin:0.28},
   {adj:35, artery:'SLA', name:'SLA-L',                      desc:'Length',                                                       val:21,   margin:9.8},
+  {adj:37, artery:'SLA', name:'SLA-D entering upper lip',   desc:'Depth above labial commissure entering upper lip (range 5–9)', val:7,    margin:2},
+  {adj:38, artery:'SLA', name:'SLA-D at cheilion',          desc:'Depth at cheilion (mouth corner)',                             val:5.3,  margin:0.3},
+  {adj:39, artery:'SLA', name:'SLA-D at cupid\'s bow peak', desc:'Depth at cupid\'s bow peak',                                  val:3.8,  margin:0.9},
+  {adj:40, artery:'SLA', name:'SLA-D at cupid\'s bow midpoint', desc:'Depth at cupid\'s bow midpoint',                          val:3.3,  margin:1.2},
 ];
 
 const ARTERY_COLORS = {DNA:'#6bb8ff', LNA:'#ff9f6b', SLA:'#6bffaa'};
@@ -654,7 +687,7 @@ arteriesInOrder.forEach(artery=>{
     if(a.margin === 0){
       return `<div class="adj-static" title="${a.desc}">
         <span class="adj-name">${a.name}</span>
-        <span class="adj-badge">fixed</span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="font-size:12px;color:var(--text-secondary)">${a.val.toFixed(2)}</span><span class="adj-badge">fixed</span></span>
       </div>`;
     }
     const mn = (a.val - a.margin).toFixed(3);
@@ -1041,7 +1074,12 @@ document.getElementById('chkPoints').addEventListener('change',e=>{
 document.getElementById('chkMesh').addEventListener('change',e=>{if(headMesh)headMesh.visible=e.target.checked;});
 document.getElementById('meshOpacity').addEventListener('input',function(){
   document.getElementById('meshOpacity_val').textContent=parseFloat(this.value).toFixed(2);
-  if(headMesh&&headMesh.material)headMesh.material.opacity=parseFloat(this.value);
+  if(headMesh&&headMesh.material){
+    const v=parseFloat(this.value);
+    headMesh.material.opacity=v;
+    headMesh.material.transparent=v<1;
+    headMesh.material.needsUpdate=true;
+  }
 });
 
 // ── Load GLB ──────────────────────────────────────────────────────────
